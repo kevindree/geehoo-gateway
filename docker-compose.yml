@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: api_gate
+      POSTGRES_PASSWORD: localpassword
+      POSTGRES_DB: api_gate
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile.control-plane
+    restart: unless-stopped
+    user: root
+    environment:
+      DATABASE_URL: postgresql://api_gate:localpassword@postgres:5432/api_gate
+      REDIS_URL: redis://redis:6379
+      ADMIN_JWT_SECRET: local-dev-secret-change-in-production-32c
+      GATEWAY_JWT_SECRET: local-gateway-secret-change-in-prod-32c
+      INTERNAL_SERVICE_SECRET: local-internal-secret-change-in-prod
+      GATEWAY_IMAGE: geehoo-gateway/gateway:latest
+      K8S_ENABLED: 'false'
+      NODE_ENV: development
+      PORT: '4000'
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - gateway-config:/gateway-config
+    ports:
+      - '4000:4000'
+
+  gateway-local:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    environment:
+      GATEWAY_CONFIG_PATH: /gateway-config/config.json
+      GATEWAY_PROJECT_ID: local-dev
+      GATEWAY_JWT_SECRET: local-gateway-secret-change-in-prod-32c
+      GATEWAY_REDIS_URL: redis://redis:6379
+      CONTROL_PLANE_INTERNAL_URL: http://control-plane:4000
+      INTERNAL_SERVICE_SECRET: local-internal-secret-change-in-prod
+      PORT: '3000'
+    volumes:
+      - gateway-config:/gateway-config
+    depends_on:
+      - redis
+      - control-plane
+    ports:
+      - '4001:3000'
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    restart: unless-stopped
+    depends_on:
+      - control-plane
+    ports:
+      - '3000:80'
+
+volumes:
+  postgres_data:
+  gateway-config:

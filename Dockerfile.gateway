@@ -1,0 +1,28 @@
+# ---- Builder stage ----
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/gateway/package.json ./packages/gateway/
+COPY packages/control-plane/package.json ./packages/control-plane/
+COPY packages/ui/package.json ./packages/ui/
+
+RUN npm ci --workspace=packages/gateway
+
+COPY packages/gateway ./packages/gateway
+RUN cd packages/gateway && npm run build
+
+# ---- Gateway runtime ----
+FROM node:20-alpine AS gateway
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/gateway/dist ./dist
+COPY packages/gateway/package.json .
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]

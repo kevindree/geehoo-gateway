@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Route" ADD COLUMN "sortOrder" INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: api_gate
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: api_gate_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://api_gate:testpassword@localhost:5432/api_gate_test
+      REDIS_URL: redis://localhost:6379
+      ADMIN_JWT_SECRET: test-secret-at-least-32-characters-long
+      GATEWAY_JWT_SECRET: test-gateway-secret-32-characters-ok
+      GATEWAY_PROJECT_ID: test-project
+      GATEWAY_REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate --workspace=packages/control-plane
+
+      - name: Run Prisma migrations
+        run: npm run db:deploy --workspace=packages/control-plane
+
+      - name: Lint (control-plane)
+        run: npm run lint --workspace=packages/control-plane
+
+      - name: Lint (gateway)
+        run: npm run lint --workspace=packages/gateway
+
+      - name: Type check (control-plane)
+        run: npx tsc --noEmit -p packages/control-plane/tsconfig.json
+
+      - name: Type check (gateway)
+        run: npx tsc --noEmit -p packages/gateway/tsconfig.json
+
+      - name: Test (control-plane)
+        run: npm test --workspace=packages/control-plane
+
+      - name: Test (gateway)
+        run: npm test --workspace=packages/gateway
+
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build control-plane image
+        run: docker build -f Dockerfile.control-plane -t geehoo-gateway/control-plane:${{ github.sha }} .
+
+      - name: Build gateway image
+        run: docker build -f Dockerfile.gateway -t geehoo-gateway/gateway:${{ github.sha }} .
+
+      - name: Build UI image
+        run: docker build -f Dockerfile.ui -t geehoo-gateway/ui:${{ github.sha }} .

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: control-plane
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      serviceAccountName: control-plane
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: control-plane
+          image: geehoo-gateway/control-plane:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "4000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: redis-url
+            - name: ADMIN_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: admin-jwt-secret
+            - name: GATEWAY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: gateway-jwt-secret
+            - name: GATEWAY_IMAGE
+              value: geehoo-gateway/gateway:latest
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 20
+            periodSeconds: 30

@@ -1,0 +1,26 @@
+{
+  "name": "geehoo-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/control-plane",
+    "packages/gateway",
+    "packages/ui"
+  ],
+  "scripts": {
+    "dev:cp": "npm run dev --workspace=packages/control-plane",
+    "dev:gw": "npm run dev --workspace=packages/gateway",
+    "dev:ui": "npm run dev --workspace=packages/ui",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "deploy:ui": "docker compose build ui && docker compose up -d ui",
+    "deploy:cp": "docker compose build control-plane && docker compose up -d control-plane",
+    "deploy:gw": "docker compose build gateway-local && docker compose up -d gateway-local",
+    "deploy": "docker compose build ui control-plane gateway-local && docker compose up -d ui control-plane gateway-local"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "prettier": "^3.3.0"
+  }
+}

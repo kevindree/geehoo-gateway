@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  PROJECT_ADMIN
+}
+
+enum ProjectStatus {
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  DELETING
+  ERROR
+}
+
+enum UpstreamType {
+  REST
+  GRAPHQL
+  WEBSOCKET
+  SOAP
+}
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+  HEAD
+  OPTIONS
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  role         AdminRole @default(PROJECT_ADMIN)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  projectMembers ProjectMember[]
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  name           String
+  slug           String        @unique
+  status         ProjectStatus @default(PROVISIONING)
+  k8sNamespace   String        @unique
+  ingressPrefix  String        @unique
+  description    String?
+  authRequired   Boolean       @default(true)
+  // Project-level parameters for upstream auth (bearer, basic, apikey_header, apikey_query)
+  params         Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  routes    Route[]
+  upstreams Upstream[]
+  apiKeys   ApiKey[]
+  endUsers  EndUser[]
+  members   ProjectMember[]
+}
+
+model ProjectMember {
+  id        String    @id @default(cuid())
+  projectId String
+  userId    String
+  role      AdminRole @default(PROJECT_ADMIN)
+  createdAt DateTime  @default(now())
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Route {
+  id          String     @id @default(cuid())
+  projectId   String
+  name        String
+  path        String
+  method      HttpMethod
+  public      Boolean    @default(false)
+  enabled     Boolean    @default(true)
+  description String?
+
+  // Auth config: { type: "jwt" | "apikey", ... }
+  authConfig Json?
+
+  // Rate limit config: { windowMs: number, max: number }
+  rateLimitConfig Json?
+
+  // Orchestration flow: { nodes: OrchestratorNode[], edges: Edge[] }
+  orchestrationFlow Json
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, path, method])
+}
+
+model Upstream {
+  id          String       @id @default(cuid())
+  projectId   String
+  name        String
+  type        UpstreamType @default(REST)
+  baseUrl     String
+  description String?
+
+  // Default headers to inject: { key: value }
+  defaultHeaders Json?
+
+  // Default timeout in ms
+  timeout Int @default(10000)
+
+  // Retry config: { maxRetries: number, backoffMs: number }
+  retryConfig Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  projectId String
+  label     String
+  keyHash   String    @unique
+  keyPrefix String
+  expiresAt DateTime?
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// API consumers — scoped per project, authenticated via GATEWAY_JWT_SECRET
+model EndUser {
+  id           String   @id @default(cuid())
+  projectId    String
+  email        String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+}

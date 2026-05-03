@@ -1,0 +1,33 @@
+# ---- Builder stage ----
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/control-plane/package.json ./packages/control-plane/
+COPY packages/gateway/package.json ./packages/gateway/
+COPY packages/ui/package.json ./packages/ui/
+
+RUN npm ci --workspace=packages/control-plane --workspace=packages/gateway
+
+COPY packages/control-plane ./packages/control-plane
+RUN cd packages/control-plane && npx prisma generate && npm run build
+
+COPY packages/gateway ./packages/gateway
+RUN cd packages/gateway && npm run build
+
+# ---- Control Plane runtime ----
+FROM node:20-alpine AS control-plane
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/control-plane/dist ./dist
+COPY --from=builder /app/packages/control-plane/prisma ./prisma
+COPY packages/control-plane/package.json .
+
+RUN apk add --no-cache openssl
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+EXPOSE 4000
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
