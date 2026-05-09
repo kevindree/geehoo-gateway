@@ -403,10 +403,10 @@ async function executeForEach(
   // Worker-pool style: spawn `concurrency` workers that pull indices off a shared cursor.
   let cursor = 0
   const workers = Array.from({ length: Math.min(concurrency, limit) }, async () => {
-    while (true) {
-      const idx = cursor++
-      if (idx >= limit) break
+    let idx = cursor++
+    while (idx < limit) {
       await runOne(idx)
+      idx = cursor++
     }
   })
   await Promise.all(workers)
