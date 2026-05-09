@@ -114,10 +114,21 @@ export async function callUpstream(config: UpstreamCallConfig): Promise<Upstream
     }
   }
 
-  logger.debug({ upstreamId: config.upstreamId, url: config.url, method: config.method }, 'Upstream call')
+  logger.debug(
+    {
+      upstreamId: config.upstreamId,
+      type: config.type,
+      url: resolvedUrl,
+      method: requestConfig.method,
+      headers: sanitizeHeaders(requestConfig.headers as Record<string, unknown> | undefined),
+      body: requestConfig.data,
+    },
+    'Upstream request',
+  )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let response: import('axios').AxiosResponse<any>
+  const startedAt = Date.now()
   try {
     response = await axios(requestConfig)
   } catch (err) {
@@ -130,6 +141,18 @@ export async function callUpstream(config: UpstreamCallConfig): Promise<Upstream
     logger.warn({ upstreamId: label, url: config.url, axiosCode }, 'Upstream connection failed')
     throw new UpstreamNetworkError(label, 503, 'Upstream service unavailable')
   }
+
+  logger.debug(
+    {
+      upstreamId: config.upstreamId,
+      url: resolvedUrl,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      headers: sanitizeHeaders(response.headers as unknown as Record<string, unknown> | undefined),
+      body: response.data,
+    },
+    'Upstream response',
+  )
 
   if (response.status >= 400) {
     const label = config.upstreamId ?? 'upstream'
@@ -238,4 +261,25 @@ function applyUpstreamAuth(base: AxiosRequestConfig, auth: UpstreamAuth): AxiosR
   }
 
   return { ...base, url, headers }
+}
+
+const REDACTED_HEADER_NAMES = new Set([
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'api-key',
+  'x-auth-token',
+])
+
+function sanitizeHeaders(
+  headers: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!headers) return undefined
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(headers)) {
+    out[k] = REDACTED_HEADER_NAMES.has(k.toLowerCase()) ? '[REDACTED]' : v
+  }
+  return out
 }

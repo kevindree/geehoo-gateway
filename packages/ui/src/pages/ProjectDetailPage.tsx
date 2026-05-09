@@ -33,6 +33,7 @@ export default function ProjectDetailPage() {
   const dragOverIndex = useRef<number | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
   const [dropTarget, setDropTarget] = useState<number | null>(null)
+  const [draggableIdx, setDraggableIdx] = useState<number | null>(null)
 
   useEffect(() => {
     setOrderedRoutes(routes ?? [])
@@ -132,67 +133,103 @@ export default function ProjectDetailPage() {
         {orderedRoutes.map((route, idx) => (
           <div key={route.id}>
             {/* Drop indicator line above */}
-            {dragging !== null && dropTarget === idx && dragging !== idx && dragging !== idx - 1 && (
-              <div className="h-0.5 bg-indigo-500 mx-4 rounded-full" />
+            {dragging !== null && dropTarget === idx && dropTarget !== dragging && dropTarget !== dragging + 1 && (
+              <div className="h-0.5 bg-indigo-500 mx-4 rounded-full pointer-events-none" />
             )}
             <div
-              draggable
+              draggable={draggableIdx === idx}
               onDragStart={(e) => {
+                if (draggableIdx !== idx) {
+                  e.preventDefault()
+                  return
+                }
                 dragIndex.current = idx
                 setDragging(idx)
                 e.dataTransfer.effectAllowed = 'move'
               }}
               onDragEnter={() => {
                 dragOverIndex.current = idx
-                setDropTarget(idx)
               }}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
-              onDragLeave={() => {}}
-              onDragEnd={() => {
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                const rect = e.currentTarget.getBoundingClientRect()
+                const after = e.clientY > rect.top + rect.height / 2
+                const insertAt = after ? idx + 1 : idx
+                dragOverIndex.current = insertAt
+                setDropTarget(insertAt)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
                 const from = dragIndex.current
-                const to = dragOverIndex.current
-                if (from !== null && to !== null && from !== to) {
-                  const next = [...orderedRoutes]
-                  const [moved] = next.splice(from, 1)
-                  next.splice(to, 0, moved)
-                  setOrderedRoutes(next)
-                  reorderRoutes.mutate({ projectId: id!, ids: next.map((r) => r.id) })
+                const insertAt = dragOverIndex.current
+                if (from !== null && insertAt !== null) {
+                  const to = insertAt > from ? insertAt - 1 : insertAt
+                  if (to !== from) {
+                    const next = [...orderedRoutes]
+                    const [moved] = next.splice(from, 1)
+                    next.splice(to, 0, moved)
+                    setOrderedRoutes(next)
+                    reorderRoutes.mutate({ projectId: id!, ids: next.map((r) => r.id) })
+                  }
                 }
                 dragIndex.current = null
                 dragOverIndex.current = null
                 setDragging(null)
                 setDropTarget(null)
+                setDraggableIdx(null)
+              }}
+              onDragLeave={() => {}}
+              onDragEnd={() => {
+                dragIndex.current = null
+                dragOverIndex.current = null
+                setDragging(null)
+                setDropTarget(null)
+                setDraggableIdx(null)
               }}
               className={`flex items-center justify-between p-4 transition-opacity ${dragging === idx ? 'opacity-30' : 'opacity-100'}`}
             >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Drag handle */}
-              <span className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 shrink-0 select-none" title="Drag to reorder">
+              <span
+                onMouseDown={() => setDraggableIdx(idx)}
+                onMouseUp={() => setDraggableIdx(null)}
+                onMouseLeave={() => { if (dragging === null) setDraggableIdx(null) }}
+                className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 shrink-0 select-none"
+                title="Drag to reorder"
+              >
                 <svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                   <circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>
                   <circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/>
                   <circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/>
                 </svg>
               </span>
-              <span
-                className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${METHOD_COLOR[route.method] ?? 'bg-gray-100 text-gray-600'}`}
-              >
-                {route.method}
-              </span>
-              <div>
-                <span className="font-mono text-sm text-gray-900">{route.path}</span>
-                {route.name && <span className="text-xs text-gray-400 ml-2">{route.name}</span>}
+              {/* Column 1: Method badge */}
+              <div className="w-20 shrink-0 flex justify-start">
+                <span
+                  className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${METHOD_COLOR[route.method] ?? 'bg-gray-100 text-gray-600'}`}
+                >
+                  {route.method}
+                </span>
               </div>
-              {route.public && (
-                <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
-                  public
-                </span>
-              )}
-              {!route.enabled && (
-                <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded">
-                  disabled
-                </span>
-              )}
+              {/* Column 2: Path */}
+              <div className="w-44 shrink-0 font-mono text-sm text-gray-900 truncate">
+                {route.path}
+              </div>
+              {/* Column 3: Description + status tags */}
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <span className="text-xs text-gray-400 truncate">{route.name ?? ''}</span>
+                {route.public && (
+                  <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded shrink-0">
+                    public
+                  </span>
+                )}
+                {!route.enabled && (
+                  <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded shrink-0">
+                    disabled
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Link
@@ -214,8 +251,8 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           {/* Drop indicator line after last item */}
-          {dragging !== null && dropTarget === idx && idx === orderedRoutes.length - 1 && dragging !== idx && (
-            <div className="h-0.5 bg-indigo-500 mx-4 rounded-full" />
+          {dragging !== null && idx === orderedRoutes.length - 1 && dropTarget === orderedRoutes.length && dropTarget !== dragging + 1 && (
+            <div className="h-0.5 bg-indigo-500 mx-4 rounded-full pointer-events-none" />
           )}
           </div>
         ))}

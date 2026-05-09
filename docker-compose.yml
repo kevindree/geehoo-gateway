@@ -54,6 +54,8 @@ services:
       CONTROL_PLANE_INTERNAL_URL: http://control-plane:4000
       INTERNAL_SERVICE_SECRET: local-internal-secret-change-in-prod
       PORT: '3000'
+      LOG_LEVEL: debug
+      NODE_ENV: development   # 已是 development 就会启用 pino-pretty
     volumes:
       - gateway-config:/gateway-config
     depends_on:

@@ -99,10 +99,18 @@ routesRouter.post('/', async (req: Request<{ id: string }>, res, next) => {
     if (!project) return next(createError('Project not found', 404, 'NOT_FOUND'))
 
     const { orchestrationFlow, ...otherData } = parsed.data
+    // Place new route at the end of the sort order
+    const last = await prisma.route.findFirst({
+      where: { projectId: req.params.id },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    })
+    const nextSortOrder = (last?.sortOrder ?? -1) + 1
     const route = await prisma.route.create({
       data: {
         ...otherData,
         projectId: req.params.id,
+        sortOrder: nextSortOrder,
         orchestrationFlow: orchestrationFlow as unknown as Prisma.InputJsonValue,
       },
     })

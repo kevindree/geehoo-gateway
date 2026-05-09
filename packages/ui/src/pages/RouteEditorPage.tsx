@@ -305,10 +305,50 @@ export default function RouteEditorPage() {
         <div className="w-52 border-r border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
             <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Routes</p>
-            <button
-              onClick={() => navigate(`/projects/${projectId}/routes/new`)}
-              className="text-indigo-600 hover:text-indigo-800 text-xs font-medium transition-colors"
-            >+ New</button>
+            <div className="flex items-center gap-2">
+              {!isNew && existingRoute && (
+                <button
+                  onClick={async () => {
+                    try {
+                      // Find a unique path by appending -copy, -copy-2, etc.
+                      const existingPaths = new Set(
+                        (routes ?? [])
+                          .filter((r) => r.method === existingRoute.method)
+                          .map((r) => r.path),
+                      )
+                      let newPath = `${existingRoute.path}-copy`
+                      let counter = 2
+                      while (existingPaths.has(newPath)) {
+                        newPath = `${existingRoute.path}-copy-${counter++}`
+                      }
+                      const created = await createRoute.mutateAsync({
+                        projectId: projectId!,
+                        data: {
+                          name: `${existingRoute.name} (Copy)`,
+                          path: newPath,
+                          method: existingRoute.method,
+                          public: existingRoute.public,
+                          description: existingRoute.description ?? '',
+                          enabled: existingRoute.enabled,
+                          orchestrationFlow: existingRoute.orchestrationFlow,
+                        },
+                      })
+                      navigate(`/projects/${projectId}/routes/${created.id}/edit`)
+                    } catch (err) {
+                      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+                        ?.response?.data?.error?.message
+                      setError(msg ?? 'Failed to duplicate route')
+                    }
+                  }}
+                  className="text-gray-600 hover:text-gray-800 text-xs font-medium transition-colors"
+                  title="Duplicate this route"
+                >Duplicate</button>
+              )}
+              <button
+                onClick={() => navigate(`/projects/${projectId}/routes/new`)}
+                className="text-indigo-600 hover:text-indigo-800 text-xs font-medium transition-colors"
+              >+ New</button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto">
             {(routes ?? []).map((r) => {
@@ -459,6 +499,15 @@ export default function RouteEditorPage() {
                 } as Record<string, string>)[selectedNode.type ?? ''] ?? 'Node Config'}
               </span>
               <button onClick={() => setSelectedNode(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Node ID</span>
+              <code className="flex-1 text-xs font-mono text-gray-700 truncate select-all" title={selectedNode.id}>{selectedNode.id}</code>
+              <button
+                onClick={() => navigator.clipboard?.writeText(selectedNode.id)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors shrink-0"
+                title="Copy node ID"
+              >Copy</button>
             </div>
             <div className="p-4 flex flex-col gap-4 text-sm">
 
@@ -891,7 +940,7 @@ export default function RouteEditorPage() {
               {(((selectedNode.data.transform as Record<string, unknown> | undefined)?.type as string) || 'jmespath') === 'jmespath' && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">JMESPath Expression</label>
-                  <input
+                  <textarea
                     value={((selectedNode.data.transform as Record<string, unknown> | undefined)?.expression as string) || ''}
                     onChange={(e) =>
                       updateNodeData(selectedNode.id, {
@@ -899,7 +948,9 @@ export default function RouteEditorPage() {
                       })
                     }
                     placeholder="items[0].name"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    rows={4}
+                    spellCheck={false}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y whitespace-pre"
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     JMESPath expression evaluated against the input. Examples: <code className="bg-gray-100 px-1 rounded font-mono">data.user.id</code>, <code className="bg-gray-100 px-1 rounded font-mono">items[*].name</code>, <code className="bg-gray-100 px-1 rounded font-mono">data[?active==`true`]</code>.
