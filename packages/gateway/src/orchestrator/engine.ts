@@ -77,6 +77,7 @@ async function executeNode(
   ctx: ExecutionContext,
   allNodes: OrchestrationNode[],
   adjacency: Map<string, string[]>,
+  stopNodeIds: Set<string> = new Set(),
 ): Promise<void> {
   logger.debug({ nodeId: node.id, type: node.type }, 'Executing orchestration node')
 
@@ -93,11 +94,15 @@ async function executeNode(
       break
 
     case 'condition':
-      await executeCondition(node, ctx, allNodes, adjacency)
+      await executeCondition(node, ctx, allNodes, adjacency, stopNodeIds)
       return // Condition handles its own branching
 
     case 'loop':
       ctx.results[node.id] = await executeLoop(node, ctx, allNodes, adjacency)
+      break
+
+    case 'for_each':
+      ctx.results[node.id] = await executeForEach(node, ctx, allNodes, adjacency)
       break
 
     case 'merge':
@@ -125,11 +130,12 @@ async function executeNode(
       break
   }
 
-  // Execute next nodes sequentially
+  // Execute next nodes sequentially (skip any nodes in the stop set)
   const nextIds = adjacency.get(node.id) ?? []
   for (const nextId of nextIds) {
+    if (stopNodeIds.has(nextId)) continue
     const nextNode = allNodes.find((n) => n.id === nextId)
-    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency)
+    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds)
   }
 }
 
@@ -238,6 +244,7 @@ async function executeCondition(
   ctx: ExecutionContext,
   allNodes: OrchestrationNode[],
   adjacency: Map<string, string[]>,
+  stopNodeIds: Set<string> = new Set(),
 ): Promise<void> {
   const cfg = node.config as {
     inputFrom: string
@@ -256,9 +263,9 @@ async function executeCondition(
   // Here we use the node config to specify branch targets
   const cfgBranch = node.config as Record<string, string>
   const nextId = cfgBranch[branch]
-  if (nextId) {
+  if (nextId && !stopNodeIds.has(nextId)) {
     const nextNode = allNodes.find((n) => n.id === nextId)
-    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency)
+    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds)
   }
 }
 
@@ -282,7 +289,9 @@ async function executeLoop(
     const targetNode = allNodes.find((n) => n.id === cfg.targetNodeId)
     if (!targetNode) break
 
-    await executeNode(targetNode, ctx, allNodes, adjacency)
+    // Pass the loop node's own ID as a stop node to prevent the target sub-graph
+    // from following edges back into this loop node (which would cause infinite recursion).
+    await executeNode(targetNode, ctx, allNodes, adjacency, new Set([node.id]))
 
     const iterResult = cfg.aggregateResultsFrom
       ? resolveRef(cfg.aggregateResultsFrom, ctx)
@@ -304,6 +313,105 @@ async function executeLoop(
   }
 
   return accumulated
+}
+
+async function executeForEach(
+  node: OrchestrationNode,
+  ctx: ExecutionContext,
+  allNodes: OrchestrationNode[],
+  adjacency: Map<string, string[]>,
+): Promise<unknown[]> {
+  const cfg = node.config as {
+    iterateFrom: string         // ref to the array to iterate (e.g. "productList.data")
+    targetNodeId: string        // node executed once per item
+    itemAlias?: string          // key under which the current item is exposed (default '$item')
+    collectFrom?: string        // optional ref to extract per-iteration value (defaults to target node result)
+    mergeWithItem?: boolean     // if true, shallow-merge the item with the collected value
+    maxConcurrency?: number     // default 1 (sequential)
+    maxItems?: number           // hard cap
+  }
+
+  const items = resolveRef(cfg.iterateFrom, ctx)
+  if (!Array.isArray(items)) {
+    throw createError(
+      `for_each: iterateFrom "${cfg.iterateFrom}" did not resolve to an array`,
+      500,
+      'CONFIG_ERROR',
+    )
+  }
+
+  const targetNode = allNodes.find((n) => n.id === cfg.targetNodeId)
+  if (!targetNode) {
+    throw createError(
+      `for_each: targetNodeId "${cfg.targetNodeId}" not found`,
+      500,
+      'CONFIG_ERROR',
+    )
+  }
+
+  const HARD_CAP = 200
+  const limit = Math.min(items.length, cfg.maxItems ?? HARD_CAP, HARD_CAP)
+  const concurrency = Math.max(1, Math.min(cfg.maxConcurrency ?? 1, 20))
+  const alias = cfg.itemAlias?.trim() || '$item'
+  const indexAlias = `${alias}Index`
+
+  const out: unknown[] = new Array(limit)
+
+  const runOne = async (idx: number): Promise<void> => {
+    const item = items[idx]
+    // Each iteration runs in a sub-context so $item / writes from the iteration
+    // do not leak across iterations or back into the parent flow.
+    const subCtx: ExecutionContext = {
+      ...ctx,
+      results: { ...ctx.results, [alias]: item, [indexAlias]: idx },
+    }
+
+    // Use the for_each node's own ID as a stop node to prevent the target sub-graph
+    // from following edges back into this for_each node (same infinite-recursion guard as loop).
+    await executeNode(targetNode, subCtx, allNodes, adjacency, new Set([node.id]))
+
+    let collected: unknown = cfg.collectFrom
+      ? resolveRef(cfg.collectFrom, subCtx)
+      : subCtx.results[cfg.targetNodeId]
+
+    // Unwrap an upstream_call envelope { status, data } automatically
+    if (
+      collected &&
+      typeof collected === 'object' &&
+      !Array.isArray(collected) &&
+      'data' in (collected as Record<string, unknown>) &&
+      'status' in (collected as Record<string, unknown>)
+    ) {
+      collected = (collected as { data: unknown }).data
+    }
+
+    if (
+      cfg.mergeWithItem &&
+      item !== null &&
+      typeof item === 'object' &&
+      !Array.isArray(item) &&
+      collected !== null &&
+      typeof collected === 'object' &&
+      !Array.isArray(collected)
+    ) {
+      out[idx] = { ...(item as object), ...(collected as object) }
+    } else {
+      out[idx] = collected
+    }
+  }
+
+  // Worker-pool style: spawn `concurrency` workers that pull indices off a shared cursor.
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(concurrency, limit) }, async () => {
+    while (true) {
+      const idx = cursor++
+      if (idx >= limit) break
+      await runOne(idx)
+    }
+  })
+  await Promise.all(workers)
+
+  return out
 }
 
 function executeMerge(node: OrchestrationNode, ctx: ExecutionContext): unknown {
