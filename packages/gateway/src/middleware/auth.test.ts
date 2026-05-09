@@ -47,7 +47,7 @@ describe('createAuthMiddleware', () => {
       const { req, res, next } = makeMockReqRes(`Bearer ${token}`)
       createAuthMiddleware(makeRoute())(req, res, next)
       expect(next).toHaveBeenCalled()
-      expect((req as any).user).toMatchObject({ sub: 'user-1' })
+      expect(req.user).toMatchObject({ sub: 'user-1' })
     })
 
     it('rejects missing Authorization header', () => {
@@ -76,16 +76,16 @@ describe('createAuthMiddleware', () => {
     it('accepts X-Api-Key header for apikey routes', () => {
       const { req, res, next } = makeMockReqRes(undefined, 'some-api-key-value')
       createAuthMiddleware(
-        makeRoute({ authConfig: { type: 'apikey' } } as any),
+        makeRoute({ authConfig: { type: 'apikey' } }),
       )(req, res, next)
       expect(next).toHaveBeenCalled()
-      expect((req as any).user?.sub).toMatch(/^apikey:/)
+      expect(req.user?.sub).toMatch(/^apikey:/)
     })
 
     it('rejects missing X-Api-Key header', () => {
       const { req, res, next } = makeMockReqRes()
       createAuthMiddleware(
-        makeRoute({ authConfig: { type: 'apikey' } } as any),
+        makeRoute({ authConfig: { type: 'apikey' } }),
       )(req, res, next)
       expect(res.status).toHaveBeenCalledWith(401)
     })

@@ -98,9 +98,32 @@ export default function RouteEditorPage() {
       description: existingRoute.description ?? '',
     })
   }, [existingRoute, setNodes, setEdges])
+  const [panelWidth, setPanelWidth] = useState(420)
+  const isResizing = useRef(false)
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startW = panelWidth
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = startX - ev.clientX
+      setPanelWidth(Math.max(280, Math.min(800, startW + delta)))
+    }
+    const onMouseUp = () => {
+      isResizing.current = false
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [panelWidth])
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [copiedNodeId, setCopiedNodeId] = useState(false)
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
 
   const handleNodesChange = useCallback(
@@ -392,6 +415,7 @@ export default function RouteEditorPage() {
                 <p className="text-[10px] text-gray-400 italic">New route</p>
               </div>
             )}
+            <div className="h-[25%]" />
           </div>
         </div>
 
@@ -483,7 +507,13 @@ export default function RouteEditorPage() {
 
         {/* Node config panel */}
         {selectedNode && (
-          <div className="w-[420px] border-l border-gray-200 bg-white overflow-y-auto flex flex-col">
+          <div className="flex shrink-0" style={{ width: panelWidth }}>
+            {/* Resize handle */}
+            <div
+              onMouseDown={onResizeMouseDown}
+              className="w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 bg-gray-200 transition-colors shrink-0"
+            />
+            <div className="flex-1 border-l border-gray-200 bg-white overflow-y-auto flex flex-col min-w-0">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
               <span className="text-sm font-semibold text-gray-800">
                 {({
@@ -501,13 +531,41 @@ export default function RouteEditorPage() {
               <button onClick={() => setSelectedNode(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
             </div>
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Node ID</span>
-              <code className="flex-1 text-xs font-mono text-gray-700 truncate select-all" title={selectedNode.id}>{selectedNode.id}</code>
+              <code className="flex-1 text-xs font-mono text-gray-600 truncate select-all" title={selectedNode.id}>{selectedNode.id}</code>
               <button
-                onClick={() => navigator.clipboard?.writeText(selectedNode.id)}
-                className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors shrink-0"
+                onClick={() => {
+                  const text = selectedNode.id
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(() => {
+                      setCopiedNodeId(true)
+                      setTimeout(() => setCopiedNodeId(false), 1500)
+                    })
+                  } else {
+                    const el = document.createElement('textarea')
+                    el.value = text
+                    document.body.appendChild(el)
+                    el.select()
+                    document.execCommand('copy')
+                    document.body.removeChild(el)
+                    setCopiedNodeId(true)
+                    setTimeout(() => setCopiedNodeId(false), 1500)
+                  }
+                }}
+                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors shrink-0"
                 title="Copy node ID"
-              >Copy</button>
+              >
+                {copiedNodeId ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                  </svg>
+                )}
+                {copiedNodeId ? 'Copied!' : 'Copy'}
+              </button>
             </div>
             <div className="p-4 flex flex-col gap-4 text-sm">
 
@@ -1114,6 +1172,7 @@ export default function RouteEditorPage() {
               </p>
             </>}
 
+            </div>
             </div>
           </div>
         )}

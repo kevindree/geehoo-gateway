@@ -4,7 +4,6 @@ import { gatewayConfigSchema, GatewayConfig, RouteConfig, ProjectParams } from '
 import { createAuthMiddleware } from '../middleware/auth'
 import { createRateLimitMiddleware } from '../middleware/rateLimit'
 import { runOrchestration } from '../orchestrator/engine'
-import { createError } from '../middleware/errorHandler'
 import { logger } from '../lib/logger'
 
 // Symbol used to tag dynamically registered routes so we can remove them on reload

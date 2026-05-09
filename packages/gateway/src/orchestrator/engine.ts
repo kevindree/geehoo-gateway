@@ -252,7 +252,6 @@ async function executeCondition(
   const branch = result ? 'true' : 'false'
 
   // Edges from condition node must have label 'true' or 'false'
-  const outEdges = getEdgesBySource(adjacency, node.id)
   // adjacency only stores targets; rebuild from edges is done at graph level
   // Here we use the node config to specify branch targets
   const cfgBranch = node.config as Record<string, string>
@@ -446,6 +445,7 @@ async function executeRefreshJwt(
   }
 
   // Strip jti from claims before re-signing so a fresh one is issued
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { jti: _oldJti, ...cleanClaims } = claims as Record<string, unknown> & { jti?: string }
   const newJti = crypto.randomUUID()
   const accessToken = jwt.sign(
@@ -530,10 +530,6 @@ function buildAdjacency(edges: OrchestrationEdge[]): Map<string, string[]> {
     map.get(edge.source)!.push(edge.target)
   }
   return map
-}
-
-function getEdgesBySource(adjacency: Map<string, string[]>, sourceId: string): string[] {
-  return adjacency.get(sourceId) ?? []
 }
 
 function resolveRef(ref: string, ctx: ExecutionContext): unknown {

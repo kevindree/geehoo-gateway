@@ -27,7 +27,7 @@ describe('requireAdmin middleware', () => {
     const { req, res, next } = makeMockReqRes(token)
     requireAdmin(req, res, next)
     expect(next).toHaveBeenCalled()
-    expect((req as any).user).toMatchObject({ sub: 'user-1', role: 'ADMIN' })
+    expect(req.admin).toMatchObject({ sub: 'user-1', role: 'ADMIN' })
   })
 
   it('calls next() with valid SUPER_ADMIN token', () => {
@@ -63,8 +63,8 @@ describe('requireSuperAdmin middleware', () => {
   it('calls next() only for SUPER_ADMIN', () => {
     const token = makeToken({ sub: 'su-1', role: 'SUPER_ADMIN', username: 'su' })
     const { req, res, next } = makeMockReqRes(token)
-    // First set req.user (requireAdmin would normally do this)
-    ;(req as any).user = jwt.verify(token, ADMIN_JWT_SECRET)
+    // First set req.admin (requireAdmin would normally do this)
+    req.admin = jwt.verify(token, ADMIN_JWT_SECRET) as AdminTokenPayload
     requireSuperAdmin(req, res, next)
     expect(next).toHaveBeenCalled()
   })
@@ -72,7 +72,7 @@ describe('requireSuperAdmin middleware', () => {
   it('returns 403 for ADMIN role', () => {
     const token = makeToken({ sub: 'u-1', role: 'ADMIN', username: 'admin' })
     const { req, res, next } = makeMockReqRes(token)
-    ;(req as any).user = jwt.verify(token, ADMIN_JWT_SECRET)
+    req.admin = jwt.verify(token, ADMIN_JWT_SECRET) as AdminTokenPayload
     requireSuperAdmin(req, res, next)
     expect(res.status).toHaveBeenCalledWith(403)
   })
