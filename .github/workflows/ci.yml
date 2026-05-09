@@ -40,6 +40,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       ADMIN_JWT_SECRET: test-secret-at-least-32-characters-long
       GATEWAY_JWT_SECRET: test-gateway-secret-32-characters-ok
+      INTERNAL_SERVICE_SECRET: test-internal-secret-ok
       GATEWAY_PROJECT_ID: test-project
       GATEWAY_REDIS_URL: redis://localhost:6379
       NODE_ENV: test

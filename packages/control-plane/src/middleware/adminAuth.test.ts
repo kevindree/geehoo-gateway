@@ -23,11 +23,11 @@ function makeMockReqRes(token?: string) {
 
 describe('requireAdmin middleware', () => {
   it('calls next() with valid ADMIN token', () => {
-    const token = makeToken({ sub: 'user-1', role: 'ADMIN', username: 'alice' })
+    const token = makeToken({ sub: 'user-1', role: 'PROJECT_ADMIN', username: 'alice' })
     const { req, res, next } = makeMockReqRes(token)
     requireAdmin(req, res, next)
     expect(next).toHaveBeenCalled()
-    expect(req.admin).toMatchObject({ sub: 'user-1', role: 'ADMIN' })
+    expect(req.admin).toMatchObject({ sub: 'user-1', role: 'PROJECT_ADMIN' })
   })
 
   it('calls next() with valid SUPER_ADMIN token', () => {
@@ -45,14 +45,14 @@ describe('requireAdmin middleware', () => {
   })
 
   it('returns 401 when token is expired', () => {
-    const token = jwt.sign({ sub: 'x', role: 'ADMIN' }, ADMIN_JWT_SECRET, { expiresIn: -1 })
+    const token = jwt.sign({ sub: 'x', role: 'PROJECT_ADMIN' }, ADMIN_JWT_SECRET, { expiresIn: -1 })
     const { req, res, next } = makeMockReqRes(token)
     requireAdmin(req, res, next)
     expect(res.status).toHaveBeenCalledWith(401)
   })
 
   it('returns 401 when signed with wrong secret', () => {
-    const token = jwt.sign({ sub: 'x', role: 'ADMIN' }, 'wrong-secret')
+    const token = jwt.sign({ sub: 'x', role: 'PROJECT_ADMIN' }, 'wrong-secret')
     const { req, res, next } = makeMockReqRes(token)
     requireAdmin(req, res, next)
     expect(res.status).toHaveBeenCalledWith(401)
@@ -69,8 +69,8 @@ describe('requireSuperAdmin middleware', () => {
     expect(next).toHaveBeenCalled()
   })
 
-  it('returns 403 for ADMIN role', () => {
-    const token = makeToken({ sub: 'u-1', role: 'ADMIN', username: 'admin' })
+  it('returns 403 for PROJECT_ADMIN role', () => {
+    const token = makeToken({ sub: 'u-1', role: 'PROJECT_ADMIN', username: 'admin' })
     const { req, res, next } = makeMockReqRes(token)
     req.admin = jwt.verify(token, ADMIN_JWT_SECRET) as AdminTokenPayload
     requireSuperAdmin(req, res, next)

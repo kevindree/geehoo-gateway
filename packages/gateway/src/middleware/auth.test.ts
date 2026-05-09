@@ -35,7 +35,7 @@ describe('createAuthMiddleware', () => {
   describe('public routes', () => {
     it('calls next() without any auth header', () => {
       const { req, res, next } = makeMockReqRes()
-      createAuthMiddleware(makeRoute({ public: true }))(req, res, next)
+      createAuthMiddleware(makeRoute({ public: true }), true)(req, res, next)
       expect(next).toHaveBeenCalled()
       expect(res.status).not.toHaveBeenCalled()
     })
@@ -45,14 +45,14 @@ describe('createAuthMiddleware', () => {
     it('accepts valid Bearer JWT', () => {
       const token = jwt.sign({ sub: 'user-1' }, SECRET, { expiresIn: '1h' })
       const { req, res, next } = makeMockReqRes(`Bearer ${token}`)
-      createAuthMiddleware(makeRoute())(req, res, next)
+      createAuthMiddleware(makeRoute(), true)(req, res, next)
       expect(next).toHaveBeenCalled()
       expect(req.user).toMatchObject({ sub: 'user-1' })
     })
 
     it('rejects missing Authorization header', () => {
       const { req, res, next } = makeMockReqRes()
-      createAuthMiddleware(makeRoute())(req, res, next)
+      createAuthMiddleware(makeRoute(), true)(req, res, next)
       expect(res.status).toHaveBeenCalledWith(401)
       expect(next).not.toHaveBeenCalled()
     })
@@ -60,14 +60,14 @@ describe('createAuthMiddleware', () => {
     it('rejects expired token', () => {
       const token = jwt.sign({ sub: 'user-1' }, SECRET, { expiresIn: -1 })
       const { req, res, next } = makeMockReqRes(`Bearer ${token}`)
-      createAuthMiddleware(makeRoute())(req, res, next)
+      createAuthMiddleware(makeRoute(), true)(req, res, next)
       expect(res.status).toHaveBeenCalledWith(401)
     })
 
     it('rejects token signed with wrong secret', () => {
       const token = jwt.sign({ sub: 'user-1' }, 'wrong-secret')
       const { req, res, next } = makeMockReqRes(`Bearer ${token}`)
-      createAuthMiddleware(makeRoute())(req, res, next)
+      createAuthMiddleware(makeRoute(), true)(req, res, next)
       expect(res.status).toHaveBeenCalledWith(401)
     })
   })
@@ -77,6 +77,7 @@ describe('createAuthMiddleware', () => {
       const { req, res, next } = makeMockReqRes(undefined, 'some-api-key-value')
       createAuthMiddleware(
         makeRoute({ authConfig: { type: 'apikey' } }),
+        true,
       )(req, res, next)
       expect(next).toHaveBeenCalled()
       expect(req.user?.sub).toMatch(/^apikey:/)
@@ -86,6 +87,7 @@ describe('createAuthMiddleware', () => {
       const { req, res, next } = makeMockReqRes()
       createAuthMiddleware(
         makeRoute({ authConfig: { type: 'apikey' } }),
+        true,
       )(req, res, next)
       expect(res.status).toHaveBeenCalledWith(401)
     })
