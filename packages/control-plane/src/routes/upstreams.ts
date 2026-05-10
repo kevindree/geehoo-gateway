@@ -1,4 +1,4 @@
-import { Router, Request } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import { z } from 'zod'
 import { UpstreamType } from '@prisma/client'
 import { prisma } from '../lib/prisma'
@@ -14,17 +14,14 @@ const createUpstreamSchema = z.object({
   defaultHeaders: z.record(z.string()).optional(),
   timeout: z.number().int().positive().default(10000),
   retryConfig: z
-    .object({
-      maxRetries: z.number().int().min(0).max(5),
-      backoffMs: z.number().int().positive(),
-    })
+    .object({ maxRetries: z.number().int().min(0).max(5), backoffMs: z.number().int().positive() })
     .optional(),
 })
 
-upstreamsRouter.get('/', async (req: Request<{ id: string }>, res, next) => {
+upstreamsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const upstreams = await prisma.upstream.findMany({
-      where: { projectId: req.params.id },
+      where: { projectId: req.params.projectId },
       orderBy: { createdAt: 'desc' },
     })
     res.json({ data: upstreams })
@@ -33,18 +30,13 @@ upstreamsRouter.get('/', async (req: Request<{ id: string }>, res, next) => {
   }
 })
 
-upstreamsRouter.post('/', async (req: Request<{ id: string }>, res, next) => {
+upstreamsRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = createUpstreamSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError(parsed.error.message, 400, 'VALIDATION_ERROR'))
-    }
-
-    const project = await prisma.project.findUnique({ where: { id: req.params.id } })
-    if (!project) return next(createError('Project not found', 404, 'NOT_FOUND'))
+    if (!parsed.success) return next(createError(parsed.error.message, 400, 'VALIDATION_ERROR'))
 
     const upstream = await prisma.upstream.create({
-      data: { ...parsed.data, projectId: req.params.id },
+      data: { ...parsed.data, projectId: req.params.projectId },
     })
     res.status(201).json({ data: upstream })
   } catch (err) {
@@ -52,10 +44,10 @@ upstreamsRouter.post('/', async (req: Request<{ id: string }>, res, next) => {
   }
 })
 
-upstreamsRouter.get('/:upstreamId', async (req: Request<{ id: string; upstreamId: string }>, res, next) => {
+upstreamsRouter.get('/:upstreamId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const upstream = await prisma.upstream.findFirst({
-      where: { id: req.params.upstreamId, projectId: req.params.id },
+      where: { id: req.params.upstreamId, projectId: req.params.projectId },
     })
     if (!upstream) return next(createError('Upstream not found', 404, 'NOT_FOUND'))
     res.json({ data: upstream })
@@ -64,15 +56,13 @@ upstreamsRouter.get('/:upstreamId', async (req: Request<{ id: string; upstreamId
   }
 })
 
-upstreamsRouter.put('/:upstreamId', async (req: Request<{ id: string; upstreamId: string }>, res, next) => {
+upstreamsRouter.put('/:upstreamId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = createUpstreamSchema.partial().safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError(parsed.error.message, 400, 'VALIDATION_ERROR'))
-    }
+    if (!parsed.success) return next(createError(parsed.error.message, 400, 'VALIDATION_ERROR'))
 
     const existing = await prisma.upstream.findFirst({
-      where: { id: req.params.upstreamId, projectId: req.params.id },
+      where: { id: req.params.upstreamId, projectId: req.params.projectId },
     })
     if (!existing) return next(createError('Upstream not found', 404, 'NOT_FOUND'))
 
@@ -86,10 +76,10 @@ upstreamsRouter.put('/:upstreamId', async (req: Request<{ id: string; upstreamId
   }
 })
 
-upstreamsRouter.delete('/:upstreamId', async (req: Request<{ id: string; upstreamId: string }>, res, next) => {
+upstreamsRouter.delete('/:upstreamId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const existing = await prisma.upstream.findFirst({
-      where: { id: req.params.upstreamId, projectId: req.params.id },
+      where: { id: req.params.upstreamId, projectId: req.params.projectId },
     })
     if (!existing) return next(createError('Upstream not found', 404, 'NOT_FOUND'))
     await prisma.upstream.delete({ where: { id: req.params.upstreamId } })

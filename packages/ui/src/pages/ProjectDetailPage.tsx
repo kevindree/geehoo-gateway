@@ -13,15 +13,15 @@ const METHOD_COLOR: Record<string, string> = {
 }
 
 export default function ProjectDetailPage() {
-  const { id } = useParams<{ id: string }>()
-  const { data: project, isLoading: projectLoading } = useProject(id!)
-  const { data: routes, isLoading: routesLoading } = useRoutes(id!)
-  const deleteRoute = useDeleteRoute()
-  const reorderRoutes = useReorderRoutes()
-  const updateProject = useUpdateProject()
-  const { data: endUsers } = useEndUsers(id!)
-  const createUser = useCreateEndUser()
-  const deleteUser = useDeleteEndUser()
+  const { workspaceSlug, projectId: id } = useParams<{ workspaceSlug: string; projectId: string }>()
+  const { data: project, isLoading: projectLoading } = useProject(workspaceSlug, id)
+  const { data: routes, isLoading: routesLoading } = useRoutes(workspaceSlug, id)
+  const deleteRoute = useDeleteRoute(workspaceSlug)
+  const reorderRoutes = useReorderRoutes(workspaceSlug)
+  const updateProject = useUpdateProject(workspaceSlug)
+  const { data: endUsers } = useEndUsers(workspaceSlug, id)
+  const createUser = useCreateEndUser(workspaceSlug)
+  const deleteUser = useDeleteEndUser(workspaceSlug)
 
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
@@ -105,7 +105,7 @@ export default function ProjectDetailPage() {
   return (
     <div className="px-6 py-6 max-w-4xl mx-auto">
       <div className="mb-6">
-        <Link to="/projects" className="text-sm text-gray-400 hover:text-gray-600">
+        <Link to={`/w/${workspaceSlug}/projects`} className="text-sm text-gray-400 hover:text-gray-600">
           ← Projects
         </Link>
         <h1 className="text-xl font-semibold text-gray-900 mt-1">{project.name}</h1>
@@ -117,7 +117,7 @@ export default function ProjectDetailPage() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-medium text-gray-700">Routes</h2>
         <Link
-          to={`/projects/${id}/routes/new`}
+          to={`/w/${workspaceSlug}/projects/${id}/routes/new`}
           className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
         >
           + New Route
@@ -233,7 +233,7 @@ export default function ProjectDetailPage() {
             </div>
             <div className="flex items-center gap-3">
               <Link
-                to={`/projects/${id}/routes/${route.id}/edit`}
+                to={`/w/${workspaceSlug}/projects/${id}/routes/${route.id}/edit`}
                 className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
               >
                 Edit

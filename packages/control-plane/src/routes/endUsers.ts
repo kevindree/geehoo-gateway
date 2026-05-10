@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
@@ -9,31 +9,37 @@ import { createError } from '../middleware/errorHandler'
 export const endUsersRouter = Router()
 
 const registerSchema = z.object({
+  workspaceSlug: z.string().min(1),
   projectSlug: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
 const tokenSchema = z.object({
+  workspaceSlug: z.string().min(1),
   projectSlug: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(1),
 })
 
+const DUMMY_HASH = '$2a$12$invalidhashpadding00000000000000000000000000000000000'
+
+async function findActiveProject(workspaceSlug: string, projectSlug: string) {
+  const ws = await prisma.workspace.findUnique({ where: { slug: workspaceSlug } })
+  if (!ws || ws.status !== 'ACTIVE') return null
+  return prisma.project.findFirst({
+    where: { workspaceId: ws.id, slug: projectSlug, status: 'ACTIVE' },
+  })
+}
+
 // POST /api/end-users/register
-// Public — registers an API consumer scoped to a project
-endUsersRouter.post('/register', async (req, res, next) => {
+endUsersRouter.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = registerSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError(parsed.error.errors[0].message, 400, 'VALIDATION_ERROR'))
-    }
+    if (!parsed.success) return next(createError(parsed.error.errors[0].message, 400, 'VALIDATION_ERROR'))
 
-    const { projectSlug, email, password } = parsed.data
-
-    const project = await prisma.project.findUnique({
-      where: { slug: projectSlug, status: 'ACTIVE' },
-    })
+    const { workspaceSlug, projectSlug, email, password } = parsed.data
+    const project = await findActiveProject(workspaceSlug, projectSlug)
     if (!project) return next(createError('Project not found', 404, 'NOT_FOUND'))
 
     const existing = await prisma.endUser.findUnique({
@@ -54,22 +60,15 @@ endUsersRouter.post('/register', async (req, res, next) => {
 })
 
 // POST /api/end-users/token
-// Public — returns a JWT signed with GATEWAY_JWT_SECRET for use on protected gateway routes
-endUsersRouter.post('/token', async (req, res, next) => {
+endUsersRouter.post('/token', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = tokenSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError('Invalid request body', 400, 'VALIDATION_ERROR'))
-    }
+    if (!parsed.success) return next(createError('Invalid request body', 400, 'VALIDATION_ERROR'))
 
-    const { projectSlug, email, password } = parsed.data
-
-    const project = await prisma.project.findUnique({
-      where: { slug: projectSlug, status: 'ACTIVE' },
-    })
+    const { workspaceSlug, projectSlug, email, password } = parsed.data
+    const project = await findActiveProject(workspaceSlug, projectSlug)
     if (!project) {
-      // Prevent timing-based project enumeration
-      await bcrypt.compare(password, '$2a$12$invalidhashpadding000000000000000000000000000000000000')
+      await bcrypt.compare(password, DUMMY_HASH)
       return next(createError('Invalid credentials', 401, 'UNAUTHORIZED'))
     }
 
@@ -77,17 +76,21 @@ endUsersRouter.post('/token', async (req, res, next) => {
       where: { projectId_email: { projectId: project.id, email } },
     })
     if (!user) {
-      await bcrypt.compare(password, '$2a$12$invalidhashpadding000000000000000000000000000000000000')
+      await bcrypt.compare(password, DUMMY_HASH)
       return next(createError('Invalid credentials', 401, 'UNAUTHORIZED'))
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash)
-    if (!valid) {
-      return next(createError('Invalid credentials', 401, 'UNAUTHORIZED'))
-    }
+    if (!valid) return next(createError('Invalid credentials', 401, 'UNAUTHORIZED'))
 
     const token = jwt.sign(
-      { sub: user.id, email: user.email, projectId: project.id, projectSlug: project.slug },
+      {
+        sub: user.id,
+        email: user.email,
+        projectId: project.id,
+        projectSlug: project.slug,
+        workspaceSlug,
+      },
       env.GATEWAY_JWT_SECRET,
       { expiresIn: '24h' },
     )

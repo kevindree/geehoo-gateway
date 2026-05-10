@@ -29,7 +29,6 @@ import RefreshJwtNode from '../components/flow/RefreshJwtNode'
 import GatewayAuthNode from '../components/flow/GatewayAuthNode'
 import MergeNode from '../components/flow/MergeNode'
 import LoopNode from '../components/flow/LoopNode'
-import ForEachNode from '../components/flow/ForEachNode'
 
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
@@ -43,12 +42,11 @@ const nodeTypes: NodeTypes = {
   gateway_auth_register: GatewayAuthNode,
   merge: MergeNode,
   loop: LoopNode,
-  for_each: ForEachNode,
 }
 
 const CONFIGURABLE_NODE_TYPES = new Set([
   'upstream_call', 'issue_jwt', 'refresh_jwt', 'gateway_auth_verify', 'gateway_auth_register',
-  'merge', 'response', 'transform', 'condition', 'loop', 'for_each',
+  'merge', 'response', 'transform', 'condition', 'loop',
 ])
 
 const INITIAL_NODES: Node[] = [
@@ -59,15 +57,15 @@ const INITIAL_NODES: Node[] = [
 const INITIAL_EDGES: Edge[] = []
 
 export default function RouteEditorPage() {
-  const { id: projectId, routeId } = useParams<{ id: string; routeId: string }>()
+  const { workspaceSlug, projectId, routeId } = useParams<{ workspaceSlug: string; projectId: string; routeId: string }>()
   const navigate = useNavigate()
   const isNew = routeId === undefined
 
-  const { data: project } = useProject(projectId!)
-  const { data: existingRoute } = useRoute(projectId!, routeId ?? '', )
-  const { data: routes } = useRoutes(projectId!)
-  const createRoute = useCreateRoute()
-  const updateRoute = useUpdateRoute()
+  const { data: project } = useProject(workspaceSlug, projectId)
+  const { data: existingRoute } = useRoute(workspaceSlug, projectId, routeId ?? '')
+  const { data: routes } = useRoutes(workspaceSlug, projectId)
+  const createRoute = useCreateRoute(workspaceSlug)
+  const updateRoute = useUpdateRoute(workspaceSlug)
 
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES)
@@ -196,8 +194,6 @@ export default function RouteEditorPage() {
         ? { label: 'Condition', inputFrom: '', condition: '', true: '', false: '' }
         : type === 'loop'
         ? { label: 'Loop', targetNodeId: '', stopCondition: '', maxIterations: 10, aggregateResultsFrom: '' }
-        : type === 'for_each'
-        ? { label: 'For Each', iterateFrom: '', targetNodeId: '', itemAlias: '$item', collectFrom: '', mergeWithItem: true, maxConcurrency: 1, maxItems: 100 }
         : type === 'issue_jwt'
         ? { label: 'Issue JWT', claimsFrom: '', expiresIn: '24h' }
         : type === 'refresh_jwt'
@@ -257,7 +253,7 @@ export default function RouteEditorPage() {
       {/* Project breadcrumb */}
       <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 text-sm">
         <button
-          onClick={() => navigate(`/projects/${projectId}`)}
+          onClick={() => navigate(`/w/${workspaceSlug}/projects/${projectId}`)}
           className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -272,6 +268,27 @@ export default function RouteEditorPage() {
         )}
         <span className="text-gray-400">›</span>
         <span className="text-gray-600">{isNew ? 'New Route' : (meta.name || meta.path)}</span>
+        {!isNew && meta.path && project?.ingressPrefix && (
+          <button
+            className="flex items-center gap-1 text-xs font-mono text-gray-400 bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded transition-colors select-all"
+            title="Click to copy full path"
+            onClick={() => {
+              const full = `${project.ingressPrefix}${meta.path}`
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(full)
+              } else {
+                const el = document.createElement('textarea')
+                el.value = full
+                document.body.appendChild(el)
+                el.select()
+                document.execCommand('copy')
+                document.body.removeChild(el)
+              }
+            }}
+          >
+            {project.ingressPrefix}{meta.path}
+          </button>
+        )}
       </div>
 
       {/* Toolbar */}
@@ -360,7 +377,7 @@ export default function RouteEditorPage() {
                           orchestrationFlow: existingRoute.orchestrationFlow,
                         },
                       })
-                      navigate(`/projects/${projectId}/routes/${created.id}/edit`)
+                      navigate(`/w/${workspaceSlug}/projects/${projectId}/routes/${created.id}/edit`)
                     } catch (err) {
                       const msg = (err as { response?: { data?: { error?: { message?: string } } } })
                         ?.response?.data?.error?.message
@@ -372,7 +389,7 @@ export default function RouteEditorPage() {
                 >Duplicate</button>
               )}
               <button
-                onClick={() => navigate(`/projects/${projectId}/routes/new`)}
+                onClick={() => navigate(`/w/${workspaceSlug}/projects/${projectId}/routes/new`)}
                 className="text-indigo-600 hover:text-indigo-800 text-xs font-medium transition-colors"
               >+ New</button>
             </div>
@@ -383,7 +400,7 @@ export default function RouteEditorPage() {
               return (
                 <button
                   key={r.id}
-                  onClick={() => navigate(`/projects/${projectId}/routes/${r.id}/edit`)}
+                  onClick={() => navigate(`/w/${workspaceSlug}/projects/${projectId}/routes/${r.id}/edit`)}
                   className={`w-full text-left px-3 py-2.5 border-b border-gray-100 transition-colors ${
                     isActive
                       ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
@@ -451,11 +468,6 @@ export default function RouteEditorPage() {
               className="shrink-0 bg-white hover:bg-rose-50 border-2 border-rose-500 rounded-md px-2.5 py-1 text-xs font-bold text-rose-600 uppercase transition-colors whitespace-nowrap"
               title="Iteratively re-execute a node until a stop condition is met"
             >Loop</button>
-            <button
-              onClick={() => addNode('for_each')}
-              className="shrink-0 bg-white hover:bg-pink-50 border-2 border-pink-500 rounded-md px-2.5 py-1 text-xs font-bold text-pink-600 uppercase transition-colors whitespace-nowrap"
-              title="Iterate over an array and run a target node for each item"
-            >For Each</button>
             <button
               onClick={() => addNode('merge')}
               className="shrink-0 bg-white hover:bg-teal-50 border-2 border-teal-500 rounded-md px-2.5 py-1 text-xs font-bold text-teal-600 uppercase transition-colors whitespace-nowrap"
@@ -1178,92 +1190,6 @@ export default function RouteEditorPage() {
               </div>
               <p className="text-xs text-gray-500 bg-rose-50 border border-rose-100 rounded-lg p-3">
                 Each iteration re-runs the target node and appends its (optionally extracted) result to an array. The loop stops when the stop condition is truthy or when max iterations is reached. The collected array is exposed as this loop node's result.
-              </p>
-            </>}
-
-            {/* for_each config */}
-            {selectedNode.type === 'for_each' && <>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Iterate From</label>
-                <NodeRefInput
-                  value={(selectedNode.data.iterateFrom as string) || ''}
-                  onChange={(v) => updateNodeData(selectedNode.id, { iterateFrom: v })}
-                  placeholder="productList.data"
-                  availableNodes={nodes.filter((n) => n.id !== selectedNode.id && n.type !== 'trigger' && n.type !== 'response')}
-                />
-                <p className="text-xs text-gray-400 mt-1">Reference to the array to iterate over (e.g. <code className="font-mono">productList.data</code>).</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Target Node</label>
-                <StyledSelect
-                  value={(selectedNode.data.targetNodeId as string) || ''}
-                  onChange={(v) => updateNodeData(selectedNode.id, { targetNodeId: v })}
-                  options={[
-                    { value: '', label: '— not set —' },
-                    ...nodes
-                      .filter((n) => n.id !== selectedNode.id && n.type !== 'trigger' && n.type !== 'response' && n.type !== 'for_each' && n.type !== 'loop')
-                      .map((n) => ({ value: n.id, label: `${n.id} (${n.type})` })),
-                  ]}
-                />
-                <p className="text-xs text-gray-400 mt-1">The node executed once per item. Reference the current item via <code className="font-mono">{'{{$item.field}}'}</code> in URL templates or via <code className="font-mono">$item</code> in body refs.</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Item Alias</label>
-                <input
-                  value={(selectedNode.data.itemAlias as string) || '$item'}
-                  onChange={(e) => updateNodeData(selectedNode.id, { itemAlias: e.target.value })}
-                  placeholder="$item"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Key under which the current item is exposed inside the iteration. Default <code className="font-mono">$item</code>. Index is exposed as <code className="font-mono">aliasIndex</code>.</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Collect From (optional)</label>
-                <NodeRefInput
-                  value={(selectedNode.data.collectFrom as string) || ''}
-                  onChange={(v) => updateNodeData(selectedNode.id, { collectFrom: v || undefined })}
-                  placeholder="productDetail.data"
-                  availableNodes={nodes.filter((n) => n.id !== selectedNode.id && n.type !== 'trigger' && n.type !== 'response')}
-                />
-                <p className="text-xs text-gray-400 mt-1">Per-iteration value to collect. Defaults to the target node's full result. Upstream call envelopes <code className="font-mono">{'{ status, data }'}</code> are unwrapped automatically.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="forEachMerge"
-                  checked={Boolean(selectedNode.data.mergeWithItem)}
-                  onChange={(e) => updateNodeData(selectedNode.id, { mergeWithItem: e.target.checked })}
-                />
-                <label htmlFor="forEachMerge" className="text-xs text-gray-600">Merge collected value with the source item (item fields + collected fields)</label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Concurrency</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={(selectedNode.data.maxConcurrency as number) ?? 1}
-                    onChange={(e) => updateNodeData(selectedNode.id, { maxConcurrency: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">1 = sequential. Max 20.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Max Items</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={(selectedNode.data.maxItems as number) ?? 100}
-                    onChange={(e) => updateNodeData(selectedNode.id, { maxItems: Math.max(1, Math.min(200, Number(e.target.value) || 1)) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Hard cap is 200.</p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 bg-pink-50 border border-pink-100 rounded-lg p-3">
-                Iterates over an array. For each item, runs the target node with the item exposed under the alias key (default <code className="font-mono">$item</code>). The collected per-iteration values are returned as the for_each node's result array. Do <strong>not</strong> connect the target node to downstream nodes — it should be isolated.
               </p>
             </>}
 

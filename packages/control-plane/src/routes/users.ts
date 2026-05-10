@@ -1,22 +1,26 @@
-import { Router } from 'express'
-import bcrypt from 'bcryptjs'
+import { Router, Request, Response, NextFunction } from 'express'
 import { z } from 'zod'
-import { AdminRole } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { createError } from '../middleware/errorHandler'
+import { requireSuperAdmin } from '../middleware/auth'
 
+// System-admin user management — SUPER_ADMIN only
 export const usersRouter = Router()
 
-const createUserSchema = z.object({
-  username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9_-]+$/),
-  password: z.string().min(12, 'Password must be at least 12 characters'),
-  role: z.nativeEnum(AdminRole).default('PROJECT_ADMIN'),
-})
+usersRouter.use(requireSuperAdmin)
 
-usersRouter.get('/', async (_req, res, next) => {
+usersRouter.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const users = await prisma.adminUser.findMany({
-      select: { id: true, username: true, role: true, createdAt: true },
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        systemRole: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { memberships: true, ownedWorkspaces: true } },
+      },
       orderBy: { createdAt: 'desc' },
     })
     res.json({ data: users })
@@ -25,24 +29,21 @@ usersRouter.get('/', async (_req, res, next) => {
   }
 })
 
-usersRouter.post('/', async (req, res, next) => {
+usersRouter.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const parsed = createUserSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError(parsed.error.message, 400, 'VALIDATION_ERROR'))
-    }
-
-    const existing = await prisma.adminUser.findUnique({
-      where: { username: parsed.data.username },
+    const parsed = z
+      .object({
+        systemRole: z.enum(['SUPER_ADMIN', 'USER']).optional(),
+        status: z.enum(['PENDING_ACTIVATION', 'ACTIVE', 'SUSPENDED']).optional(),
+      })
+      .safeParse(req.body)
+    if (!parsed.success) return next(createError('Invalid body', 400, 'VALIDATION_ERROR'))
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: parsed.data,
+      select: { id: true, email: true, systemRole: true, status: true, displayName: true },
     })
-    if (existing) return next(createError('Username already exists', 409, 'CONFLICT'))
-
-    const passwordHash = await bcrypt.hash(parsed.data.password, 12)
-    const user = await prisma.adminUser.create({
-      data: { username: parsed.data.username, passwordHash, role: parsed.data.role },
-      select: { id: true, username: true, role: true, createdAt: true },
-    })
-    res.status(201).json({ data: user })
+    res.json({ data: user })
   } catch (err) {
     next(err)
   }

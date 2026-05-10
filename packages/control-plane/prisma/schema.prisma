@@ -11,10 +11,132 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AdminRole {
+// =====================================================
+// User / Auth
+// =====================================================
+
+enum SystemRole {
   SUPER_ADMIN
-  PROJECT_ADMIN
+  USER
 }
+
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum EmailTokenType {
+  ACTIVATION
+  PASSWORD_RESET
+  INVITATION
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  status          UserStatus @default(PENDING_ACTIVATION)
+  systemRole      SystemRole @default(USER)
+  displayName     String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+  emailTokens     EmailToken[]
+  sentInvitations Invitation[]      @relation("InvitationSender")
+}
+
+model EmailToken {
+  id         String         @id @default(cuid())
+  userId     String?
+  type       EmailTokenType
+  tokenHash  String         @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// =====================================================
+// Workspace (multi-tenant root)
+// =====================================================
+
+enum WorkspaceStatus {
+  ACTIVE
+  SUSPENDED
+  DELETING
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model Workspace {
+  id        String          @id @default(cuid())
+  slug      String          @unique
+  name      String
+  status    WorkspaceStatus @default(ACTIVE)
+  ownerId   String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members     WorkspaceMember[]
+  projects    Project[]
+  invitations Invitation[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  invitedById String?
+  joinedAt    DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  workspaceId String
+  email       String
+  role        WorkspaceRole    @default(MEMBER)
+  invitedById String
+  tokenHash   String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inviter   User      @relation("InvitationSender", fields: [invitedById], references: [id])
+
+  @@index([workspaceId, email])
+}
+
+// =====================================================
+// Project (scoped to workspace)
+// =====================================================
 
 enum ProjectStatus {
   PROVISIONING
@@ -41,49 +163,27 @@ enum HttpMethod {
   OPTIONS
 }
 
-model AdminUser {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  passwordHash String
-  role         AdminRole @default(PROJECT_ADMIN)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  projectMembers ProjectMember[]
-}
-
 model Project {
-  id             String        @id @default(cuid())
-  name           String
-  slug           String        @unique
-  status         ProjectStatus @default(PROVISIONING)
-  k8sNamespace   String        @unique
-  ingressPrefix  String        @unique
-  description    String?
-  authRequired   Boolean       @default(true)
-  // Project-level parameters for upstream auth (bearer, basic, apikey_header, apikey_query)
-  params         Json?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  workspaceId   String
+  name          String
+  slug          String
+  status        ProjectStatus @default(PROVISIONING)
+  k8sNamespace  String        @unique
+  ingressPrefix String        @unique
+  description   String?
+  authRequired  Boolean       @default(true)
+  params        Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   routes    Route[]
   upstreams Upstream[]
   apiKeys   ApiKey[]
   endUsers  EndUser[]
-  members   ProjectMember[]
-}
 
-model ProjectMember {
-  id        String    @id @default(cuid())
-  projectId String
-  userId    String
-  role      AdminRole @default(PROJECT_ADMIN)
-  createdAt DateTime  @default(now())
-
-  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([projectId, userId])
+  @@unique([workspaceId, slug])
 }
 
 model Route {
@@ -96,13 +196,8 @@ model Route {
   enabled     Boolean    @default(true)
   description String?
 
-  // Auth config: { type: "jwt" | "apikey", ... }
-  authConfig Json?
-
-  // Rate limit config: { windowMs: number, max: number }
-  rateLimitConfig Json?
-
-  // Orchestration flow: { nodes: OrchestratorNode[], edges: Edge[] }
+  authConfig        Json?
+  rateLimitConfig   Json?
   orchestrationFlow Json
 
   sortOrder Int @default(0)
@@ -123,14 +218,9 @@ model Upstream {
   baseUrl     String
   description String?
 
-  // Default headers to inject: { key: value }
   defaultHeaders Json?
-
-  // Default timeout in ms
-  timeout Int @default(10000)
-
-  // Retry config: { maxRetries: number, backoffMs: number }
-  retryConfig Json?
+  timeout        Int   @default(10000)
+  retryConfig    Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -153,7 +243,6 @@ model ApiKey {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
-// API consumers — scoped per project, authenticated via GATEWAY_JWT_SECRET
 model EndUser {
   id           String   @id @default(cuid())
   projectId    String

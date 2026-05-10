@@ -7,31 +7,32 @@ export interface EndUser {
   createdAt: string
 }
 
-export function useEndUsers(projectId: string) {
+const base = (ws: string, pid: string) => `/workspaces/${ws}/projects/${pid}/end-users`
+
+export function useEndUsers(workspaceSlug: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ['end-users', projectId],
-    queryFn: () =>
-      api.get<{ data: EndUser[] }>(`/admin/projects/${projectId}/end-users`).then((r) => r.data.data),
-    enabled: !!projectId,
+    queryKey: ['end-users', workspaceSlug, projectId],
+    queryFn: () => api.get<{ data: EndUser[] }>(base(workspaceSlug!, projectId!)).then((r) => r.data.data),
+    enabled: !!workspaceSlug && !!projectId,
   })
 }
 
-export function useCreateEndUser() {
+export function useCreateEndUser(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, email, password }: { projectId: string; email: string; password: string }) =>
-      api
-        .post<{ data: EndUser }>(`/admin/projects/${projectId}/end-users`, { email, password })
-        .then((r) => r.data.data),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['end-users', projectId] }),
+      api.post<{ data: EndUser }>(base(workspaceSlug!, projectId), { email, password }).then((r) => r.data.data),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['end-users', workspaceSlug, projectId] }),
   })
 }
 
-export function useDeleteEndUser() {
+export function useDeleteEndUser(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, userId }: { projectId: string; userId: string }) =>
-      api.delete(`/admin/projects/${projectId}/end-users/${userId}`),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['end-users', projectId] }),
+      api.delete(`${base(workspaceSlug!, projectId)}/${userId}`),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['end-users', workspaceSlug, projectId] }),
   })
 }

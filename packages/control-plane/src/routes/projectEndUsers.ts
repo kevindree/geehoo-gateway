@@ -1,17 +1,15 @@
-import { Router, Request } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { createError } from '../middleware/errorHandler'
 
-// Mounted at /api/admin/projects/:id/end-users (adminAuth already applied by parent router)
 export const projectEndUsersRouter = Router({ mergeParams: true })
 
-// GET /api/admin/projects/:id/end-users
-projectEndUsersRouter.get('/', async (req: Request<{ id: string }>, res, next) => {
+projectEndUsersRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const users = await prisma.endUser.findMany({
-      where: { projectId: req.params.id },
+      where: { projectId: req.params.projectId },
       select: { id: true, email: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: 'desc' },
     })
@@ -26,18 +24,12 @@ const createEndUserSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
-// POST /api/admin/projects/:id/end-users
-projectEndUsersRouter.post('/', async (req: Request<{ id: string }>, res, next) => {
+projectEndUsersRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = createEndUserSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return next(createError(parsed.error.errors[0].message, 400, 'VALIDATION_ERROR'))
-    }
+    if (!parsed.success) return next(createError(parsed.error.errors[0].message, 400, 'VALIDATION_ERROR'))
     const { email, password } = parsed.data
-    const projectId = req.params.id
-
-    const project = await prisma.project.findUnique({ where: { id: projectId } })
-    if (!project) return next(createError('Project not found', 404, 'NOT_FOUND'))
+    const projectId = req.params.projectId
 
     const existing = await prisma.endUser.findUnique({
       where: { projectId_email: { projectId, email } },
@@ -56,14 +48,11 @@ projectEndUsersRouter.post('/', async (req: Request<{ id: string }>, res, next) 
   }
 })
 
-// DELETE /api/admin/projects/:id/end-users/:userId
-projectEndUsersRouter.delete('/:userId', async (req: Request<{ id: string; userId: string }>, res, next) => {
+projectEndUsersRouter.delete('/:userId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id: projectId, userId } = req.params
+    const { projectId, userId } = req.params
 
-    const user = await prisma.endUser.findFirst({
-      where: { id: userId, projectId },
-    })
+    const user = await prisma.endUser.findFirst({ where: { id: userId, projectId } })
     if (!user) return next(createError('End user not found', 404, 'NOT_FOUND'))
 
     await prisma.endUser.delete({ where: { id: userId } })

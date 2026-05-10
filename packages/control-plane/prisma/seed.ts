@@ -4,30 +4,36 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  const username = process.env.SEED_ADMIN_USERNAME ?? 'admin'
-  const password = process.env.SEED_ADMIN_PASSWORD
+  const email = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? '').trim().toLowerCase()
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD
 
+  if (!email) {
+    console.log('BOOTSTRAP_ADMIN_EMAIL not set — skipping super-admin seed.')
+    return
+  }
   if (!password || password.length < 12) {
-    console.error('ERROR: Set SEED_ADMIN_PASSWORD env var (min 12 chars) before seeding.')
+    console.error('ERROR: Set BOOTSTRAP_ADMIN_PASSWORD env var (min 12 chars) before seeding.')
     process.exit(1)
   }
 
-  const existing = await prisma.adminUser.findUnique({ where: { username } })
+  const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
-    console.log(`Admin user "${username}" already exists. Skipping.`)
+    console.log(`Super admin "${email}" already exists. Skipping.`)
     return
   }
 
   const passwordHash = await bcrypt.hash(password, 12)
-  const user = await prisma.adminUser.create({
+  const user = await prisma.user.create({
     data: {
-      username,
+      email,
       passwordHash,
-      role: 'SUPER_ADMIN',
+      systemRole: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
     },
   })
 
-  console.log(`Created SUPER_ADMIN user: ${user.username} (id: ${user.id})`)
+  console.log(`Created SUPER_ADMIN user: ${user.email} (id: ${user.id})`)
 }
 
 main()

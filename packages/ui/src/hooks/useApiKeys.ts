@@ -3,41 +3,38 @@ import api from '../lib/api'
 
 export interface ApiKey {
   id: string
-  name: string
-  prefix: string
+  label: string
+  keyPrefix: string
   createdAt: string
-  // rawKey is only present immediately after creation
-  rawKey?: string
+  key?: string // raw key, only present at creation time
 }
 
-export function useApiKeys(projectId: string) {
+const base = (ws: string, pid: string) => `/workspaces/${ws}/projects/${pid}/api-keys`
+
+export function useApiKeys(workspaceSlug: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ['apikeys', projectId],
-    queryFn: () =>
-      api.get<ApiKey[]>(`/api/admin/projects/${projectId}/api-keys`).then((r) => r.data),
+    queryKey: ['apikeys', workspaceSlug, projectId],
+    queryFn: () => api.get<{ data: ApiKey[] }>(base(workspaceSlug!, projectId!)).then((r) => r.data.data),
+    enabled: !!workspaceSlug && !!projectId,
   })
 }
 
-export function useCreateApiKey() {
+export function useCreateApiKey(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ projectId, name }: { projectId: string; name: string }) =>
-      api
-        .post<ApiKey>(`/api/admin/projects/${projectId}/api-keys`, { name })
-        .then((r) => r.data),
-    onSuccess: (_, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['apikeys', projectId] })
-    },
+    mutationFn: ({ projectId, label }: { projectId: string; label: string }) =>
+      api.post<{ data: ApiKey }>(base(workspaceSlug!, projectId), { label }).then((r) => r.data.data),
+    onSuccess: (_, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['apikeys', workspaceSlug, projectId] }),
   })
 }
 
-export function useRevokeApiKey() {
+export function useRevokeApiKey(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, keyId }: { projectId: string; keyId: string }) =>
-      api.delete(`/api/admin/projects/${projectId}/api-keys/${keyId}`),
-    onSuccess: (_, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['apikeys', projectId] })
-    },
+      api.delete(`${base(workspaceSlug!, projectId)}/${keyId}`),
+    onSuccess: (_, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['apikeys', workspaceSlug, projectId] }),
   })
 }

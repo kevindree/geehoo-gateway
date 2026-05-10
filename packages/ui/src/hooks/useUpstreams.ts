@@ -4,59 +4,48 @@ import api from '../lib/api'
 export interface Upstream {
   id: string
   name: string
-  url: string
+  baseUrl: string
   type: 'REST' | 'GRAPHQL' | 'SOAP' | 'WEBSOCKET'
-  headers?: Record<string, string>
+  defaultHeaders?: Record<string, string>
   timeout?: number
 }
 
-export function useUpstreams(projectId: string) {
+const base = (ws: string, pid: string) => `/workspaces/${ws}/projects/${pid}/upstreams`
+
+export function useUpstreams(workspaceSlug: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ['upstreams', projectId],
-    queryFn: () =>
-      api.get<Upstream[]>(`/api/admin/projects/${projectId}/upstreams`).then((r) => r.data),
+    queryKey: ['upstreams', workspaceSlug, projectId],
+    queryFn: () => api.get<{ data: Upstream[] }>(base(workspaceSlug!, projectId!)).then((r) => r.data.data),
+    enabled: !!workspaceSlug && !!projectId,
   })
 }
 
-export function useCreateUpstream() {
+export function useCreateUpstream(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, data }: { projectId: string; data: Partial<Upstream> }) =>
-      api.post<Upstream>(`/api/admin/projects/${projectId}/upstreams`, data).then((r) => r.data),
-    onSuccess: (_, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['upstreams', projectId] })
-    },
+      api.post<{ data: Upstream }>(base(workspaceSlug!, projectId), data).then((r) => r.data.data),
+    onSuccess: (_, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['upstreams', workspaceSlug, projectId] }),
   })
 }
 
-export function useUpdateUpstream() {
+export function useUpdateUpstream(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      projectId,
-      upstreamId,
-      data,
-    }: {
-      projectId: string
-      upstreamId: string
-      data: Partial<Upstream>
-    }) =>
-      api
-        .put<Upstream>(`/api/admin/projects/${projectId}/upstreams/${upstreamId}`, data)
-        .then((r) => r.data),
-    onSuccess: (_, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['upstreams', projectId] })
-    },
+    mutationFn: ({ projectId, upstreamId, data }: { projectId: string; upstreamId: string; data: Partial<Upstream> }) =>
+      api.put<{ data: Upstream }>(`${base(workspaceSlug!, projectId)}/${upstreamId}`, data).then((r) => r.data.data),
+    onSuccess: (_, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['upstreams', workspaceSlug, projectId] }),
   })
 }
 
-export function useDeleteUpstream() {
+export function useDeleteUpstream(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, upstreamId }: { projectId: string; upstreamId: string }) =>
-      api.delete(`/api/admin/projects/${projectId}/upstreams/${upstreamId}`),
-    onSuccess: (_, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['upstreams', projectId] })
-    },
+      api.delete(`${base(workspaceSlug!, projectId)}/${upstreamId}`),
+    onSuccess: (_, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['upstreams', workspaceSlug, projectId] }),
   })
 }

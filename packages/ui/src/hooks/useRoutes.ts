@@ -19,60 +19,61 @@ export interface Route {
   createdAt: string
 }
 
-export function useRoutes(projectId: string) {
+const base = (ws: string, pid: string) => `/workspaces/${ws}/projects/${pid}/routes`
+
+export function useRoutes(workspaceSlug: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ['routes', projectId],
-    queryFn: () =>
-      api.get<{ data: Route[] }>(`/admin/projects/${projectId}/routes`).then((r) => r.data.data),
-    enabled: !!projectId,
+    queryKey: ['routes', workspaceSlug, projectId],
+    queryFn: () => api.get<{ data: Route[] }>(base(workspaceSlug!, projectId!)).then((r) => r.data.data),
+    enabled: !!workspaceSlug && !!projectId,
   })
 }
 
-export function useRoute(projectId: string, routeId: string) {
+export function useRoute(workspaceSlug: string | undefined, projectId: string | undefined, routeId: string) {
   return useQuery({
-    queryKey: ['routes', projectId, routeId],
+    queryKey: ['routes', workspaceSlug, projectId, routeId],
     queryFn: () =>
-      api
-        .get<{ data: Route }>(`/admin/projects/${projectId}/routes/${routeId}`)
-        .then((r) => r.data.data),
-    enabled: !!projectId && !!routeId,
+      api.get<{ data: Route }>(`${base(workspaceSlug!, projectId!)}/${routeId}`).then((r) => r.data.data),
+    enabled: !!workspaceSlug && !!projectId && !!routeId,
   })
 }
 
-export function useCreateRoute() {
+export function useCreateRoute(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, data }: { projectId: string; data: Omit<Route, 'id' | 'projectId' | 'createdAt'> }) =>
-      api.post<{ data: Route }>(`/admin/projects/${projectId}/routes`, data).then((r) => r.data.data),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['routes', projectId] }),
+      api.post<{ data: Route }>(base(workspaceSlug!, projectId), data).then((r) => r.data.data),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['routes', workspaceSlug, projectId] }),
   })
 }
 
-export function useUpdateRoute() {
+export function useUpdateRoute(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, routeId, data }: { projectId: string; routeId: string; data: Partial<Route> }) =>
-      api
-        .put<{ data: Route }>(`/admin/projects/${projectId}/routes/${routeId}`, data)
-        .then((r) => r.data.data),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['routes', projectId] }),
+      api.put<{ data: Route }>(`${base(workspaceSlug!, projectId)}/${routeId}`, data).then((r) => r.data.data),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['routes', workspaceSlug, projectId] }),
   })
 }
 
-export function useDeleteRoute() {
+export function useDeleteRoute(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, routeId }: { projectId: string; routeId: string }) =>
-      api.delete(`/admin/projects/${projectId}/routes/${routeId}`),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['routes', projectId] }),
+      api.delete(`${base(workspaceSlug!, projectId)}/${routeId}`),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['routes', workspaceSlug, projectId] }),
   })
 }
 
-export function useReorderRoutes() {
+export function useReorderRoutes(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ projectId, ids }: { projectId: string; ids: string[] }) =>
-      api.patch(`/admin/projects/${projectId}/routes/reorder`, { ids }),
-    onSuccess: (_data, { projectId }) => qc.invalidateQueries({ queryKey: ['routes', projectId] }),
+      api.patch(`${base(workspaceSlug!, projectId)}/reorder`, { ids }),
+    onSuccess: (_data, { projectId }) =>
+      qc.invalidateQueries({ queryKey: ['routes', workspaceSlug, projectId] }),
   })
 }
