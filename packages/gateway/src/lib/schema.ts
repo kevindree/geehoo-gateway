@@ -64,6 +64,7 @@ const upstreamAuthParamsSchema = z
 export const projectParamsSchema = z
   .object({
     upstreamAuth: upstreamAuthParamsSchema,
+    variables: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
   })
   .nullish()
 

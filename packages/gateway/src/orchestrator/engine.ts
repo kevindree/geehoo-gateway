@@ -641,6 +641,12 @@ function buildAdjacency(edges: OrchestrationEdge[]): Map<string, string[]> {
 }
 
 function resolveRef(ref: string, ctx: ExecutionContext): unknown {
+  // Handle variables.NAME namespace
+  if (ref.startsWith('variables.')) {
+    const varName = ref.slice('variables.'.length)
+    const vars = (ctx.projectParams as { variables?: { name: string; value: string }[] } | null)?.variables
+    return vars?.find((v) => v.name === varName)?.value
+  }
   // ref format: "nodeId" or "nodeId.data" or "nodeId.data.field"
   const [nodeId, ...rest] = ref.split('.')
   const base = ctx.results[nodeId]
@@ -660,6 +666,8 @@ function interpolateTemplate(template: string, ctx: ExecutionContext): string {
   return template.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (_match, ref: string) => {
     const value = resolveRef(ref, ctx)
     if (value === undefined || value === null) return ''
+    // variables.* are raw values (e.g. base URLs) — do not URL-encode
+    if (ref.startsWith('variables.')) return String(value)
     return encodeURIComponent(String(value))
   })
 }

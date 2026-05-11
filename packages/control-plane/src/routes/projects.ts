@@ -138,7 +138,10 @@ const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
   authRequired: z.boolean().optional(),
-  params: z.object({ upstreamAuth: upstreamAuthParamsSchema }).optional(),
+  params: z.object({
+    upstreamAuth: upstreamAuthParamsSchema,
+    variables: z.array(z.object({ name: z.string().min(1).max(100), value: z.string() })).optional(),
+  }).optional(),
 })
 
 projectsRouter.patch('/:projectId', loadProjectForWorkspace, async (req: Request, res: Response, next: NextFunction) => {

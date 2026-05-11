@@ -56,6 +56,88 @@ const INITIAL_NODES: Node[] = [
 
 const INITIAL_EDGES: Edge[] = []
 
+// Input with {{ autocomplete for template variables
+function TemplateInput({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+  className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  suggestions: string[]
+  placeholder?: string
+  className?: string
+}) {
+  const [show, setShow] = useState(false)
+  const [token, setToken] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    onChange(v)
+    // Detect {{ token being typed
+    const cursor = e.target.selectionStart ?? v.length
+    const before = v.slice(0, cursor)
+    const match = before.match(/\{\{([^}]*)$/)
+    if (match) {
+      setToken(match[1])
+      setShow(true)
+    } else {
+      setShow(false)
+    }
+  }
+
+  const filtered = token === ''
+    ? suggestions
+    : suggestions.filter((s) => s.toLowerCase().includes(token.toLowerCase()))
+
+  const insert = (suggestion: string) => {
+    if (!inputRef.current) return
+    const cursor = inputRef.current.selectionStart ?? value.length
+    const before = value.slice(0, cursor)
+    const after = value.slice(cursor)
+    // Replace the open {{ token with the full expression
+    const replaced = before.replace(/\{\{([^}]*)$/, `{{variables.${suggestion}}}`)
+    onChange(replaced + after)
+    setShow(false)
+    setTimeout(() => {
+      if (!inputRef.current) return
+      const pos = replaced.length
+      inputRef.current.setSelectionRange(pos, pos)
+      inputRef.current.focus()
+    }, 0)
+  }
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={handleChange}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+        placeholder={placeholder}
+        className={className}
+      />
+      {show && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          {filtered.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); insert(s) }}
+              className="w-full text-left px-3 py-1.5 text-xs font-mono text-indigo-700 hover:bg-indigo-50 transition-colors"
+            >
+              {`{{variables.${s}}}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RouteEditorPage() {
   const { workspaceSlug, projectId, routeId } = useParams<{ workspaceSlug: string; projectId: string; routeId: string }>()
   const navigate = useNavigate()
@@ -75,6 +157,7 @@ export default function RouteEditorPage() {
     path: '/',
     method: 'GET',
     public: false,
+    authMethod: 'jwt' as 'public' | 'apikey' | 'jwt',
     description: '',
   })
 
@@ -90,11 +173,16 @@ export default function RouteEditorPage() {
       })),
     )
     setEdges(existingRoute.orchestrationFlow.edges)
+    const authConfig = existingRoute.authConfig as { type?: string } | null | undefined
+    const authMethod: 'public' | 'apikey' | 'jwt' = existingRoute.public
+      ? 'public'
+      : authConfig?.type === 'apikey' ? 'apikey' : 'jwt'
     setMeta({
       name: existingRoute.name,
       path: existingRoute.path,
       method: existingRoute.method,
       public: existingRoute.public,
+      authMethod,
       description: existingRoute.description ?? '',
     })
   }, [existingRoute, setNodes, setEdges])
@@ -157,7 +245,7 @@ export default function RouteEditorPage() {
     if (!isNew) return
     setNodes(INITIAL_NODES)
     setEdges(INITIAL_EDGES)
-    setMeta({ name: '', path: '/', method: 'GET', public: false, description: '' })
+    setMeta({ name: '', path: '/', method: 'GET', public: false, authMethod: 'jwt', description: '' })
     setSelectedNode(null)
     setSelectedNodeIds([])
   }, [routeId, isNew, setNodes, setEdges])
@@ -225,16 +313,21 @@ export default function RouteEditorPage() {
         edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.label as string | undefined })),
       }
 
+      const { authMethod, ...metaRest } = meta
+      const routePublic = authMethod === 'public'
+      const authConfig = authMethod === 'apikey' ? { type: 'apikey' } : authMethod === 'jwt' ? { type: 'jwt' } : undefined
+      const saveData = { ...metaRest, public: routePublic, authConfig }
+
       if (isNew) {
         await createRoute.mutateAsync({
           projectId: projectId!,
-          data: { ...meta, enabled: true, orchestrationFlow: flow },
+          data: { ...saveData, enabled: true, orchestrationFlow: flow },
         })
       } else {
         await updateRoute.mutateAsync({
           projectId: projectId!,
           routeId: routeId!,
-          data: { ...meta, orchestrationFlow: flow },
+          data: { ...saveData, orchestrationFlow: flow },
         })
       }
       setSaved(true)
@@ -311,14 +404,20 @@ export default function RouteEditorPage() {
           placeholder="Route name"
           className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48"
         />
-        <label className="flex items-center gap-1.5 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={meta.public}
-            onChange={(e) => setMeta({ ...meta, public: e.target.checked })}
-          />
-          Public
-        </label>
+        <div className="flex items-center gap-1 border border-gray-300 rounded-lg overflow-hidden text-xs">
+          {(['public', 'apikey', 'jwt'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMeta({ ...meta, authMethod: m, public: m === 'public' })}
+              className={`px-2.5 py-1.5 font-medium transition-colors ${
+                meta.authMethod === m ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+              }`}
+              title={m === 'public' ? 'No auth required' : m === 'apikey' ? 'Require API key (X-Api-Key header)' : 'Require JWT Bearer token'}
+            >
+              {m === 'public' ? 'Public' : m === 'apikey' ? 'API Key' : 'JWT'}
+            </button>
+          ))}
+        </div>
 
         <div className="flex-1" />
 
@@ -384,14 +483,24 @@ export default function RouteEditorPage() {
                       setError(msg ?? 'Failed to duplicate route')
                     }
                   }}
-                  className="text-gray-600 hover:text-gray-800 text-xs font-medium transition-colors"
+                  className="p-1 rounded text-indigo-500 hover:text-indigo-800 hover:bg-indigo-50 transition-colors"
                   title="Duplicate this route"
-                >Duplicate</button>
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                  </svg>
+                </button>
               )}
               <button
                 onClick={() => navigate(`/w/${workspaceSlug}/projects/${projectId}/routes/new`)}
-                className="text-indigo-600 hover:text-indigo-800 text-xs font-medium transition-colors"
-              >+ New</button>
+                className="p-1 rounded text-indigo-500 hover:text-indigo-800 hover:bg-indigo-50 transition-colors"
+                title="New route"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -618,9 +727,10 @@ export default function RouteEditorPage() {
               {/* URL */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">URL</label>
-                <input
+                <TemplateInput
                   value={(selectedNode.data.url as string) || ''}
-                  onChange={(e) => updateNodeData(selectedNode.id, { url: e.target.value })}
+                  onChange={(v) => updateNodeData(selectedNode.id, { url: v })}
+                  suggestions={(project?.params?.variables ?? []).map((v) => v.name)}
                   placeholder="https://example.com/api/..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />

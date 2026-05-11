@@ -8,8 +8,14 @@ export interface ProjectUpstreamAuthParams {
   apikey_query?: { paramName: string; key: string }
 }
 
+export interface ProjectVariable {
+  name: string
+  value: string
+}
+
 export interface ProjectParams {
   upstreamAuth?: ProjectUpstreamAuthParams
+  variables?: ProjectVariable[]
 }
 
 export interface Project {

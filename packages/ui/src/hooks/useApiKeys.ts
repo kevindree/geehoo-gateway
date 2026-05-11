@@ -29,6 +29,14 @@ export function useCreateApiKey(workspaceSlug: string | undefined) {
   })
 }
 
+export function useRevealApiKey(workspaceSlug: string | undefined) {
+  return useMutation({
+    mutationFn: ({ projectId, keyId, password }: { projectId: string; keyId: string; password: string }) =>
+      api.post<{ data: { key: string } }>(`${base(workspaceSlug!, projectId)}/${keyId}/reveal`, { password })
+        .then((r) => r.data.data.key),
+  })
+}
+
 export function useRevokeApiKey(workspaceSlug: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
@@ -38,3 +46,4 @@ export function useRevokeApiKey(workspaceSlug: string | undefined) {
       qc.invalidateQueries({ queryKey: ['apikeys', workspaceSlug, projectId] }),
   })
 }
+

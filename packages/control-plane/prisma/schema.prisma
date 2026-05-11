@@ -231,14 +231,15 @@ model Upstream {
 }
 
 model ApiKey {
-  id        String    @id @default(cuid())
-  projectId String
-  label     String
-  keyHash   String    @unique
-  keyPrefix String
-  expiresAt DateTime?
-  enabled   Boolean   @default(true)
-  createdAt DateTime  @default(now())
+  id           String    @id @default(cuid())
+  projectId    String
+  label        String
+  keyHash      String    @unique
+  keyPrefix    String
+  keyEncrypted String?
+  expiresAt    DateTime?
+  enabled      Boolean   @default(true)
+  createdAt    DateTime  @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
