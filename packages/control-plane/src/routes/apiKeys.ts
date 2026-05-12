@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../lib/prisma'
+import { env } from '../lib/env'
 import { createError } from '../middleware/errorHandler'
 import { requireUser } from '../middleware/auth'
 
@@ -13,10 +14,11 @@ const createKeySchema = z.object({
   expiresAt: z.string().datetime().optional(),
 })
 
-// AES-256-GCM helpers — key derived from KEY_ENCRYPTION_SECRET env var
+// AES-256-GCM helpers — key derived from a dedicated KEY_ENCRYPTION_SECRET.
+// Never fall back to other secrets: rotating an unrelated secret would
+// permanently break decryption of every persisted API key.
 function getEncryptionKey(): Buffer {
-  const secret = process.env.KEY_ENCRYPTION_SECRET ?? process.env.ADMIN_JWT_SECRET ?? ''
-  return crypto.createHash('sha256').update(secret).digest()
+  return crypto.createHash('sha256').update(env.KEY_ENCRYPTION_SECRET).digest()
 }
 
 function encryptKey(raw: string): string {

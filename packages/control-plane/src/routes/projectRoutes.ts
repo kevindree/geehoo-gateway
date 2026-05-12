@@ -21,6 +21,7 @@ const orchestrationNodeSchema = z.object({
     'transform',
     'condition',
     'loop',
+    'for_each',
     'merge',
     'response',
     'issue_jwt',

@@ -1,7 +1,30 @@
 import jmespath from 'jmespath'
 import Handlebars from 'handlebars'
-import { getQuickJS } from 'quickjs-emscripten'
+import { getQuickJS, QuickJSWASMModule } from 'quickjs-emscripten'
 import { logger } from '../lib/logger'
+
+// Cache the QuickJS WASM module so we don't pay the init cost on every call.
+let quickJsPromise: Promise<QuickJSWASMModule> | null = null
+function loadQuickJs(): Promise<QuickJSWASMModule> {
+  if (!quickJsPromise) quickJsPromise = getQuickJS()
+  return quickJsPromise
+}
+
+// Cache compiled Handlebars templates keyed by template source.
+const templateCache = new Map<string, HandlebarsTemplateDelegate>()
+const TEMPLATE_CACHE_MAX = 500
+function getCompiledTemplate(source: string): HandlebarsTemplateDelegate {
+  const cached = templateCache.get(source)
+  if (cached) return cached
+  const compiled = Handlebars.compile(source)
+  if (templateCache.size >= TEMPLATE_CACHE_MAX) {
+    // Evict the oldest entry (Map preserves insertion order)
+    const firstKey = templateCache.keys().next().value
+    if (firstKey !== undefined) templateCache.delete(firstKey)
+  }
+  templateCache.set(source, compiled)
+  return compiled
+}
 
 export interface TransformConfig {
   type: 'field_mapping' | 'jmespath' | 'template' | 'sandbox_js'
@@ -66,7 +89,7 @@ function applyTemplate(
 ): unknown {
   if (!config.template) return input
   try {
-    const compiled = Handlebars.compile(config.template)
+    const compiled = getCompiledTemplate(config.template)
     const rendered = compiled({ data: input, ...context })
     try {
       return JSON.parse(rendered)
@@ -86,7 +109,7 @@ async function applySandboxJs(
 ): Promise<unknown> {
   if (!config.script) return input
 
-  const QuickJS = await getQuickJS()
+  const QuickJS = await loadQuickJs()
   const vm = QuickJS.newContext()
 
   try {

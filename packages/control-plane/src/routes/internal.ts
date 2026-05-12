@@ -87,3 +87,56 @@ internalRouter.post('/projects/:projectId/auth/register', async (req: Request, r
     next(err)
   }
 })
+
+const apiKeyVerifySchema = z.object({
+  key: z.string().min(1),
+})
+
+// POST /internal/projects/:projectId/apikeys/verify
+// Called by the gateway to validate an X-Api-Key header. Returns the matching
+// ApiKey record (without sensitive fields) if valid, 401 otherwise.
+internalRouter.post('/projects/:projectId/apikeys/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = apiKeyVerifySchema.safeParse(req.body)
+    if (!parsed.success) {
+      return next(createError('key is required', 400, 'VALIDATION_ERROR'))
+    }
+    const { projectId } = req.params
+    const rawKey = parsed.data.key
+    // Use prefix to narrow down candidates (avoid scanning every key in project)
+    const keyPrefix = rawKey.slice(0, 12)
+
+    const candidates = await prisma.apiKey.findMany({
+      where: { projectId, keyPrefix, enabled: true },
+      select: { id: true, label: true, keyHash: true, expiresAt: true },
+    })
+
+    // Always run at least one bcrypt to keep timing roughly constant
+    const dummyHash = '$2a$12$invalidhashpadding00000000000000000000000000000000000'
+    if (candidates.length === 0) {
+      await bcrypt.compare(rawKey, dummyHash)
+      return next(createError('Invalid API key', 401, 'UNAUTHORIZED'))
+    }
+
+    let matched: { id: string; label: string; expiresAt: Date | null } | null = null
+    for (const candidate of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await bcrypt.compare(rawKey, candidate.keyHash)
+      if (ok) {
+        matched = { id: candidate.id, label: candidate.label, expiresAt: candidate.expiresAt }
+        break
+      }
+    }
+
+    if (!matched) {
+      return next(createError('Invalid API key', 401, 'UNAUTHORIZED'))
+    }
+    if (matched.expiresAt && matched.expiresAt < new Date()) {
+      return next(createError('API key expired', 401, 'UNAUTHORIZED'))
+    }
+
+    res.json({ id: matched.id, label: matched.label, projectId })
+  } catch (err) {
+    next(err)
+  }
+})

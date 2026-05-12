@@ -29,6 +29,7 @@ services:
       ADMIN_JWT_SECRET: local-dev-secret-change-in-production-32c
       GATEWAY_JWT_SECRET: local-gateway-secret-change-in-prod-32c
       INTERNAL_SERVICE_SECRET: local-internal-secret-change-in-prod
+      KEY_ENCRYPTION_SECRET: local-key-encryption-secret-change-in-prod
       GATEWAY_IMAGE: geehoo-gateway/gateway:latest
       K8S_ENABLED: 'false'
       NODE_ENV: development

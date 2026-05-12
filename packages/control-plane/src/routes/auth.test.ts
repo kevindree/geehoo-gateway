@@ -5,17 +5,27 @@ import bcrypt from 'bcryptjs'
 const ADMIN_JWT_SECRET = 'test-secret-at-least-32-characters-long'
 process.env.ADMIN_JWT_SECRET = ADMIN_JWT_SECRET
 process.env.GATEWAY_JWT_SECRET = 'test-gateway-secret-at-least-32-characters-long'
+process.env.KEY_ENCRYPTION_SECRET = 'test-key-encryption-secret-at-least-32-chars'
 process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-1234567890'
 process.env.DATABASE_URL = 'postgresql://test/test'
 process.env.REDIS_URL = 'redis://localhost:6379'
 process.env.NODE_ENV = 'test'
 
-jest.mock('../lib/prisma', () => ({
-  prisma: {
+jest.mock('../lib/prisma', () => {
+  const prisma: Record<string, unknown> = {
     user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     emailToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-  },
-}))
+  }
+  // $transaction(cb) runs the callback with the same prisma instance as the tx client.
+  // $transaction([...ops]) returns Promise.all of the ops.
+  prisma.$transaction = jest.fn((arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: typeof prisma) => unknown)(prisma)
+    }
+    return Promise.all(arg as Promise<unknown>[])
+  })
+  return { prisma }
+})
 
 jest.mock('../lib/redis', () => ({
   redis: {

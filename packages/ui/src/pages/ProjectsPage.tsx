@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useProjects, useCreateProject, useDeleteProject, Project } from '../hooks/useProjects'
 import { useAuth } from '../hooks/useAuth'
+import Avatar from '../components/Avatar'
+import Spinner from '../components/Spinner'
 
 const STATUS_COLOR: Record<Project['status'], string> = {
   PROVISIONING: 'bg-yellow-100 text-yellow-800',
@@ -37,20 +39,24 @@ export default function ProjectsPage() {
     }
   }
 
-  if (isLoading) return <p className="px-6 py-6 text-gray-500">Loading projects…</p>
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-24 gap-2 text-gray-400">
+      <Spinner className="h-5 w-5 text-indigo-400" /> Loading…
+    </div>
+  )
   if (error) return <p className="px-6 py-6 text-red-600">Failed to load projects</p>
 
   return (
-    <div className="px-6 py-6 max-w-4xl mx-auto">
+    <div className="px-6 py-8 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Workspace: <span className="font-mono">{workspaceSlug}</span></p>
+          <p className="text-sm text-gray-400 mt-0.5 font-mono">{workspaceSlug}</p>
         </div>
         {canManage && (
           <button
             onClick={() => setShowForm(true)}
-            className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+            className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium">
             + New Project
           </button>
         )}
@@ -88,28 +94,37 @@ export default function ProjectsPage() {
 
       <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
         {projects?.length === 0 && (
-          <p className="text-gray-400 text-sm p-6">No projects yet. Create your first one!</p>
+          <div className="flex flex-col items-center py-12 text-center">
+            <div className="h-12 w-12 rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
+              <svg className="h-6 w-6 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+              </svg>
+            </div>
+            <p className="text-gray-500 text-sm">No projects yet.</p>
+            {canManage && <p className="text-gray-400 text-xs mt-1">Click "New Project" to get started.</p>}
+          </div>
         )}
         {projects?.map((project) => (
-          <div key={project.id} className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-4">
-              <div>
+          <div key={project.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors group">
+            <Avatar name={project.name} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
                 <Link to={`/w/${workspaceSlug}/projects/${project.id}`}
-                  className="font-medium text-gray-900 hover:text-indigo-600 transition-colors">
+                  className="font-medium text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
                   {project.name}
                 </Link>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {project.ingressPrefix} · {project._count?.routes ?? 0} routes
-                </p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLOR[project.status]}`}>
+                  {project.status}
+                </span>
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[project.status]}`}>
-                {project.status}
-              </span>
+              <p className="text-xs text-gray-400 mt-0.5 font-mono truncate">
+                {project.ingressPrefix} · {project._count?.routes ?? 0} routes
+              </p>
             </div>
             {canManage && (
               <button
                 onClick={() => { if (confirm(`Delete project "${project.name}"?`)) deleteProject.mutate(project.id) }}
-                className="text-xs text-red-500 hover:text-red-700 transition-colors">
+                className="text-xs text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100 px-2 py-1 rounded hover:bg-red-50 shrink-0">
                 Delete
               </button>
             )}

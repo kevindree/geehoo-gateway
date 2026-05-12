@@ -78,7 +78,13 @@ async function executeNode(
   allNodes: OrchestrationNode[],
   adjacency: Map<string, string[]>,
   stopNodeIds: Set<string> = new Set(),
+  visited: Set<string> = new Set(),
 ): Promise<void> {
+  if (visited.has(node.id)) {
+    logger.warn({ nodeId: node.id }, 'Orchestration cycle detected — skipping re-entry')
+    return
+  }
+  visited.add(node.id)
   logger.debug({ nodeId: node.id, type: node.type }, 'Executing orchestration node')
 
   switch (node.type) {
@@ -94,7 +100,7 @@ async function executeNode(
       break
 
     case 'condition':
-      await executeCondition(node, ctx, allNodes, adjacency, stopNodeIds)
+      await executeCondition(node, ctx, allNodes, adjacency, stopNodeIds, visited)
       return // Condition handles its own branching
 
     case 'loop':
@@ -135,7 +141,7 @@ async function executeNode(
   for (const nextId of nextIds) {
     if (stopNodeIds.has(nextId)) continue
     const nextNode = allNodes.find((n) => n.id === nextId)
-    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds)
+    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds, visited)
   }
 }
 
@@ -245,14 +251,14 @@ async function executeCondition(
   allNodes: OrchestrationNode[],
   adjacency: Map<string, string[]>,
   stopNodeIds: Set<string> = new Set(),
+  visited: Set<string> = new Set(),
 ): Promise<void> {
   const cfg = node.config as {
     inputFrom: string
     condition: string   // JMESPath expression returning truthy
   }
 
-  const { applyTransform: _at } = await import('./transform')
-  const result = await _at(
+  const result = await applyTransform(
     { type: 'jmespath', expression: cfg.condition },
     resolveRef(cfg.inputFrom, ctx),
   )
@@ -265,7 +271,7 @@ async function executeCondition(
   const nextId = cfgBranch[branch]
   if (nextId && !stopNodeIds.has(nextId)) {
     const nextNode = allNodes.find((n) => n.id === nextId)
-    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds)
+    if (nextNode) await executeNode(nextNode, ctx, allNodes, adjacency, stopNodeIds, visited)
   }
 }
 
@@ -304,8 +310,7 @@ async function executeLoop(
     }
 
     // Check stop condition
-    const { applyTransform: _at } = await import('./transform')
-    const shouldStop = await _at(
+    const shouldStop = await applyTransform(
       { type: 'jmespath', expression: cfg.stopCondition },
       ctx.results[cfg.targetNodeId],
     )

@@ -4,6 +4,7 @@ import request from 'supertest'
 const ADMIN_JWT_SECRET = 'test-secret-at-least-32-characters-long'
 process.env.ADMIN_JWT_SECRET = ADMIN_JWT_SECRET
 process.env.GATEWAY_JWT_SECRET = 'test-gateway-secret-at-least-32-characters-long'
+process.env.KEY_ENCRYPTION_SECRET = 'test-key-encryption-secret-at-least-32-chars'
 process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-1234567890'
 process.env.DATABASE_URL = 'postgresql://test/test'
 process.env.REDIS_URL = 'redis://localhost:6379'

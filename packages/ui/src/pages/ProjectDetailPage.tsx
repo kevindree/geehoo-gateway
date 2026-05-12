@@ -4,6 +4,8 @@ import { useProject, useUpdateProject, ProjectParams, ProjectUpstreamAuthParams 
 import { useRoutes, useDeleteRoute, useReorderRoutes } from '../hooks/useRoutes'
 import { useEndUsers, useCreateEndUser, useDeleteEndUser } from '../hooks/useEndUsers'
 import { useApiKeys, useCreateApiKey, useRevokeApiKey, useRevealApiKey } from '../hooks/useApiKeys'
+import Avatar from '../components/Avatar'
+import Spinner from '../components/Spinner'
 
 type Tab = 'routes' | 'auth' | 'parameters' | 'endusers'
 
@@ -146,8 +148,12 @@ export default function ProjectDetailPage() {
     }
   }
 
-  if (projectLoading || routesLoading) return <p className="text-gray-500">Loading…</p>
-  if (!project) return <p className="text-red-600">Project not found</p>
+  if (projectLoading || routesLoading) return (
+    <div className="flex items-center justify-center py-24 gap-2 text-gray-400">
+      <Spinner className="h-5 w-5 text-indigo-400" /> Loading…
+    </div>
+  )
+  if (!project) return <p className="text-red-600 p-6">Project not found</p>
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'routes', label: 'Routes' },
@@ -157,16 +163,30 @@ export default function ProjectDetailPage() {
   ]
 
   return (
-    <div className="px-6 py-6 max-w-4xl mx-auto">
+    <div className="px-6 py-8 max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <Link to={`/w/${workspaceSlug}/projects`} className="text-sm text-gray-400 hover:text-gray-600">
-          ← Projects
+        <Link to={`/w/${workspaceSlug}/projects`} className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-indigo-600 transition-colors mb-3">
+          <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+          </svg>
+          Projects
         </Link>
-        <h1 className="text-xl font-semibold text-gray-900 mt-1">{project.name}</h1>
-        <p className="text-sm text-gray-400">
-          {project.ingressPrefix} · namespace: {project.slug}
-        </p>
+        <div className="flex items-center gap-4">
+          <Avatar name={project.name} size="lg" />
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-gray-900">{project.name}</h1>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                project.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                project.status === 'PROVISIONING' ? 'bg-yellow-100 text-yellow-700' :
+                project.status === 'ERROR' ? 'bg-red-100 text-red-700' :
+                'bg-gray-100 text-gray-500'
+              }`}>{project.status}</span>
+            </div>
+            <p className="text-sm text-gray-400 mt-0.5 font-mono">{project.ingressPrefix} · namespace: {project.slug}</p>
+          </div>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -623,7 +643,6 @@ export default function ProjectDetailPage() {
       {activeTab === 'endusers' && (
         <div>
           <div className="mb-4">
-            <h2 className="font-medium text-gray-700">End Users</h2>
             <p className="text-xs text-gray-400 mt-0.5">
               Gateway-managed users for routes using <code className="bg-gray-100 px-1 rounded font-mono">gateway_auth_verify</code> /{' '}
               <code className="bg-gray-100 px-1 rounded font-mono">gateway_auth_register</code> nodes.

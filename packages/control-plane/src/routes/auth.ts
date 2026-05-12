@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 import { redis } from '../lib/redis'
 import { logger } from '../lib/logger'
 import { createError } from '../middleware/errorHandler'
-import { signUserJwt } from '../middleware/auth'
+import { signUserJwt, requireUser } from '../middleware/auth'
 import { generateOpaqueToken, hashToken } from '../lib/tokens'
 import { sendActivationEmail, sendPasswordResetEmail } from '../lib/mailer'
 
@@ -129,11 +129,18 @@ authRouter.post('/activate', async (req: Request, res: Response, next: NextFunct
       return next(createError('Token is invalid', 400, 'INVALID_TOKEN'))
     }
 
-    const user = await prisma.user.update({
-      where: { id: record.userId },
-      data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+    const user = await prisma.$transaction(async (tx) => {
+      // Re-check token under the transaction to avoid double-consume races.
+      const fresh = await tx.emailToken.findUnique({ where: { id: record.id } })
+      if (!fresh || fresh.consumedAt || fresh.expiresAt < new Date()) {
+        throw createError('Token is invalid or expired', 400, 'INVALID_TOKEN')
+      }
+      await tx.emailToken.update({ where: { id: fresh.id }, data: { consumedAt: new Date() } })
+      return tx.user.update({
+        where: { id: fresh.userId! },
+        data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+      })
     })
-    await prisma.emailToken.update({ where: { id: record.id }, data: { consumedAt: new Date() } })
 
     const jwtToken = signUserJwt({ sub: user.id, email: user.email, systemRole: user.systemRole })
     res.json({ token: jwtToken, user: { id: user.id, email: user.email, systemRole: user.systemRole, displayName: user.displayName } })
@@ -228,8 +235,14 @@ authRouter.post('/reset-password', async (req: Request, res: Response, next: Nex
     }
 
     const passwordHash = await bcrypt.hash(parsed.data.password, 12)
-    await prisma.user.update({ where: { id: record.userId }, data: { passwordHash, status: 'ACTIVE' } })
-    await prisma.emailToken.update({ where: { id: record.id }, data: { consumedAt: new Date() } })
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.emailToken.findUnique({ where: { id: record.id } })
+      if (!fresh || fresh.consumedAt || fresh.expiresAt < new Date()) {
+        throw createError('Token is invalid or expired', 400, 'INVALID_TOKEN')
+      }
+      await tx.emailToken.update({ where: { id: fresh.id }, data: { consumedAt: new Date() } })
+      await tx.user.update({ where: { id: fresh.userId! }, data: { passwordHash, status: 'ACTIVE' } })
+    })
 
     res.json({ message: 'Password updated. Please log in.' })
   } catch (err) {
@@ -240,7 +253,6 @@ authRouter.post('/reset-password', async (req: Request, res: Response, next: Nex
 // =====================================================
 // GET /auth/me  — current user profile + workspace memberships
 // =====================================================
-import { requireUser } from '../middleware/auth'
 
 authRouter.get('/me', requireUser, async (req: Request, res: Response, next: NextFunction) => {
   try {

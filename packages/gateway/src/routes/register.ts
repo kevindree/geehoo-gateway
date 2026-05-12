@@ -62,7 +62,7 @@ function mountRoute(app: Application, route: RouteConfig, projectId: string, aut
     | 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options'
 
   const middlewares = [
-    createAuthMiddleware(route, authRequired),
+    createAuthMiddleware(route, authRequired, projectId),
     createRateLimitMiddleware(route),
   ]
 

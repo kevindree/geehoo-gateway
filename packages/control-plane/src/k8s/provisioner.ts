@@ -1,10 +1,10 @@
 import * as k8s from '@kubernetes/client-node'
 import { Project } from '@prisma/client'
 import { prisma } from '../lib/prisma'
+import { env } from '../lib/env'
 import { logger } from '../lib/logger'
 
 const GATEWAY_IMAGE = process.env.GATEWAY_IMAGE ?? 'geehoo-gateway/gateway:latest'
-const GATEWAY_JWT_SECRET = process.env.GATEWAY_JWT_SECRET ?? ''
 const K8S_ENABLED = process.env.K8S_ENABLED === 'true'
 
 class Provisioner {
@@ -182,7 +182,7 @@ class Provisioner {
         namespace,
         body: {
           metadata: { name: 'gateway-secrets', namespace },
-          stringData: { 'jwt-secret': GATEWAY_JWT_SECRET },
+          stringData: { 'jwt-secret': env.GATEWAY_JWT_SECRET },
         },
       })
     } catch (err: unknown) {
