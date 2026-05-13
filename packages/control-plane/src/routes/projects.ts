@@ -110,7 +110,8 @@ async function loadProjectForWorkspace(req: Request, res: Response, next: NextFu
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Project not found' } })
     return
   }
-  ;(req as Request & { project?: typeof project }).project = project
+  const reqWithProject = req as Request & { project?: typeof project }
+  reqWithProject.project = project
   next()
 }
 
