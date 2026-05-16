@@ -29,9 +29,9 @@ spec:
             - name: NODE_ENV
               value: production
             - name: GATEWAY_PROJECT_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+              # Set by provisioner to the project UUID at deploy time.
+              # Do not use fieldRef: metadata.namespace — namespace != project id.
+              value: ""
             - name: GATEWAY_CONFIG_PATH
               value: /etc/gateway/config.json
             - name: GATEWAY_JWT_SECRET
@@ -41,6 +41,13 @@ spec:
                   key: jwt-secret
             - name: GATEWAY_REDIS_URL
               value: redis://redis:6379
+            - name: CONTROL_PLANE_INTERNAL_URL
+              value: http://control-plane.control-plane.svc.cluster.local:4000
+            - name: INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-secrets
+                  key: internal-service-secret
           volumeMounts:
             - name: config
               mountPath: /etc/gateway
@@ -51,7 +58,7 @@ spec:
               memory: 128Mi
             limits:
               cpu: 500m
-              memory: 256Mi
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /health

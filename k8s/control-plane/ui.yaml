@@ -37,6 +37,10 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  tls:
+    - hosts:
+        - geehoo-gateway.example.com
+      secretName: ui-tls-secret  # Create via cert-manager or kubectl create secret tls
   rules:
     - host: geehoo-gateway.example.com
       http:

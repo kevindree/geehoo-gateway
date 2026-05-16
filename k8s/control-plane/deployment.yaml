@@ -49,6 +49,51 @@ spec:
                   key: gateway-jwt-secret
             - name: GATEWAY_IMAGE
               value: geehoo-gateway/gateway:latest
+            - name: INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: internal-service-secret
+            - name: KEY_ENCRYPTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: key-encryption-secret
+            - name: APP_PUBLIC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: app-public-url
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-host
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-port
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-user
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-pass
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-from
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-secrets
+                  key: smtp-secure
           resources:
             requests:
               cpu: 100m

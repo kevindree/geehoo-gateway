@@ -147,6 +147,16 @@ class Provisioner {
                       secretKeyRef: { name: 'gateway-secrets', key: 'jwt-secret' },
                     },
                   },
+                  {
+                    name: 'INTERNAL_SERVICE_SECRET',
+                    valueFrom: {
+                      secretKeyRef: { name: 'gateway-secrets', key: 'internal-service-secret' },
+                    },
+                  },
+                  {
+                    name: 'CONTROL_PLANE_INTERNAL_URL',
+                    value: 'http://control-plane.control-plane.svc.cluster.local:4000',
+                  },
                 ],
                 volumeMounts: [{ name: 'config', mountPath: '/etc/gateway', readOnly: true }],
                 resources: {
@@ -176,13 +186,16 @@ class Provisioner {
       },
     }
 
-    // Create JWT secret
+    // Create JWT + internal secret
     try {
       await this.coreApi.createNamespacedSecret({
         namespace,
         body: {
           metadata: { name: 'gateway-secrets', namespace },
-          stringData: { 'jwt-secret': env.GATEWAY_JWT_SECRET },
+          stringData: {
+            'jwt-secret': env.GATEWAY_JWT_SECRET,
+            'internal-service-secret': env.INTERNAL_SERVICE_SECRET,
+          },
         },
       })
     } catch (err: unknown) {
